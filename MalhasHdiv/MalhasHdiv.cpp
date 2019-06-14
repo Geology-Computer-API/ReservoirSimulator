@@ -59,11 +59,6 @@
 #include "TPZSSpStructMatrix.h"
 #include "pzskylstrmatrix.h"
 #include "TPZSkylineNSymStructMatrix.h"
-//#include "TRSRibFrac.h"
-//#include "TRSRibs.h"
-//#include "TRSFace.h"
-//#include "TPZPointCloud.h"
-//#include "bicgstab.h"
 
 #include "pzanalysis.h"
 #include "pzfstrmatrix.h"
@@ -85,9 +80,9 @@
 TPZGeoMesh * GenerateGmesh(int nx, int ny, double l, double h);
 
 void Ladoderecho (const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
+
 //double RunErrors(int n, int order);
 void SolExact(const TPZVec<REAL> &ptx, TPZVec<STATE> &sol, TPZFMatrix<STATE> &flux);
-
 
 //Creating pressure mesh
 TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order);
@@ -121,12 +116,12 @@ void HDivTest(int nx, int ny, int order1, int order2){
 //Generating first mesh
     TPZGeoMesh *gmesh = GenerateGmesh(nx, ny, 1, 1);
     TPZCompMesh  *pmesh = GeneratePressureCmesh(gmesh, order1);
-    TPZCompMesh *qmesh = GenerateFluxCmesh(gmesh, order2);
+    TPZCompMesh *qmesh = GenerateFluxCmesh(gmesh, order1);
     TPZVec<TPZCompMesh *> fmesh(2);
     fmesh[0] = qmesh;
     fmesh[1] = pmesh;
     TPZMultiphysicsCompMesh *MixedMesh = GenerateMixedCmesh(fmesh, 1);
-//    MixedMesh->SetDefaultOrder(order1);
+    MixedMesh->SetDefaultOrder(order1);
     
 //Generating second mesh
     TPZCompMesh *qmesh_2 = GenerateFluxCmesh(gmesh, order2);
@@ -134,24 +129,32 @@ void HDivTest(int nx, int ny, int order1, int order2){
     TPZVec<TPZCompMesh *> fmesh_2(2);
     fmesh[0] = qmesh_2;
     fmesh[1] = pmesh_2;
-    TPZMultiphysicsCompMesh *MixedMesh_2 = GenerateMixedCmesh(fmesh, 1);
-//    MixedMesh_2->SetDefaultOrder(order2);
+    TPZMultiphysicsCompMesh *MixedMesh_2 = GenerateMixedCmesh(fmesh, 2);
+    MixedMesh_2->SetDefaultOrder(order2);
     
 //Solving the system:
     MixedMesh->InitializeBlock();
+    MixedMesh_2->InitializeBlock();
     bool must_opt_band_width_Q = true;
     int number_threads = 4;
     
 //Analysis
     TPZAnalysis *an = new TPZAnalysis(MixedMesh,must_opt_band_width_Q);
+    TPZAnalysis *an_2 = new TPZAnalysis(MixedMesh_2,must_opt_band_width_Q);
     TPZSkylineStructMatrix sparse_matrix(MixedMesh);
+     TPZSkylineStructMatrix sparse_matrix_2(MixedMesh_2);
     TPZStepSolver<STATE> step;
     sparse_matrix.SetNumThreads(number_threads);
+    sparse_matrix_2.SetNumThreads(number_threads);
     step.SetDirect(ELDLt);
     an->SetStructuralMatrix(sparse_matrix);
+    an_2->SetStructuralMatrix(sparse_matrix_2);
     an->SetSolver(step);
+    an_2->SetSolver(step);
     an->Assemble();
+    an_2->Assemble();
     an->Solve();
+    an_2->Solve();
     
 //PostProcess
     TPZStack<std::string> scalar, vectors;
@@ -164,9 +167,16 @@ void HDivTest(int nx, int ny, int order1, int order2){
     std::ofstream filePrint("MixedHdiv1.txt");
     MixedMesh->Print(filePrint);
     std::string name = "MixedHdiv1.vtk";
+    
+    std::ofstream filePrint_2("MixedHdiv2.txt");
+    MixedMesh_2->Print(filePrint_2);
+    std::string name_2 = "MixedHdiv2.vtk";
   
     an->DefineGraphMesh(2, scalnames, vecnames, name);
     an->PostProcess(0,2);
+    
+    an_2->DefineGraphMesh(2, scalnames, vecnames, name_2);
+    an_2->PostProcess(0,2);
 }
 
 /**
@@ -383,6 +393,6 @@ void Ladoderecho (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
 //Force function definition
     double fx= -2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);
     
-    disp[0]=fx;
- //   disp[0]=0.0;
+   disp[0]=fx;
+//  disp[0]=0.0;
 }
