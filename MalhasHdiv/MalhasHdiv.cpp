@@ -59,11 +59,11 @@
 #include "TPZSSpStructMatrix.h"
 #include "pzskylstrmatrix.h"
 #include "TPZSkylineNSymStructMatrix.h"
-#include "TRSRibFrac.h"
-#include "TRSRibs.h"
-#include "TRSFace.h"
-#include "TPZPointCloud.h"
-#include "bicgstab.h"
+//#include "TRSRibFrac.h"
+//#include "TRSRibs.h"
+//#include "TRSFace.h"
+//#include "TPZPointCloud.h"
+//#include "bicgstab.h"
 
 #include "pzanalysis.h"
 #include "pzfstrmatrix.h"
@@ -105,15 +105,15 @@ using namespace std;
 
 int main(){
 
-   HDivTest(8, 8, 1, 2);
+   HDivTest(2, 2, 1, 2);
 }
 
 /**
  * @brief Generates a Hdiv test
  * @param nx: number of partions on x
  * @param ny: number of partions on y
- * @param order for the first mesh
- * @param order for the second mesh
+ * @param order1 for the first mesh
+ * @param order2 for the second mesh
  * @return Two computational meshes with different orders
  */
 void HDivTest(int nx, int ny, int order1, int order2){
@@ -121,7 +121,7 @@ void HDivTest(int nx, int ny, int order1, int order2){
 //Generating first mesh
     TPZGeoMesh *gmesh = GenerateGmesh(nx, ny, 1, 1);
     TPZCompMesh  *pmesh = GeneratePressureCmesh(gmesh, order1);
-    TPZCompMesh *qmesh = GenerateFluxCmesh(gmesh, order1);
+    TPZCompMesh *qmesh = GenerateFluxCmesh(gmesh, order2);
     TPZVec<TPZCompMesh *> fmesh(2);
     fmesh[0] = qmesh;
     fmesh[1] = pmesh;
