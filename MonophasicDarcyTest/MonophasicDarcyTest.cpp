@@ -62,11 +62,14 @@
 #include "TPZHybridizeHDiv.h"
 #include "pzbuildmultiphysicsmesh.h"
 #include "TPZMultiphasicFlowAnalysis.h"
-#include "TPZDarcyFlow.h"
 #include "TPZMixedDarcyFlow.h"
 #include "TPZPrimalPoisson.h"
 #include "TPZGmshReader.h"
+#include "pzgeopoint.h"
+#include "tpzgeoelrefpattern.h"
 
+
+//#include "tpzgeoelrefpattern.h.h"
 using namespace std;
 using namespace cv;
 
@@ -76,38 +79,16 @@ TPZCompMesh *CreateCompMeshNewMat(TPZGeoMesh *gmesh, int order);
 TPZCompMesh *CMeshMultphysics(TPZGeoMesh * gmesh, TPZVec<TPZCompMesh *> meshvec);
 TPZCompMesh *CMeshMultphysicsNewMat(TPZGeoMesh * gmesh, TPZVec<TPZCompMesh *> meshvec);
 
-TPZCompMesh *CreatePressureCmesh(TPZGeoMesh *gmesh, int order, bool newmat);
-TPZCompMesh *CreateFluxCmesh(TPZGeoMesh *gmesh, int order, bool newmat);
-
+TPZCompMesh *CreatePressureCmesh(TPZGeoMesh *gmesh, int order);
+TPZCompMesh *CreateFluxCmesh(TPZGeoMesh *gmesh, int order);
+TPZGeoMesh *gmesh1D(TPZVec<double> x1,TPZVec<double> x2, int n);
 void H1TestMat();
 void MixedTest();
 void MixedTestNewMat();
-
-void sourceterm( const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
 int main(){
     
-  
-    TPZGeoMesh * geomesh = new TPZGeoMesh;
-    std::string dirname = PZSOURCEDIR;
-    std::string grid;
-    grid = dirname + "/Projects/DrillPipe/mesh/case_1.msh";
-    
-    TPZGmshReader Geometry;
-    REAL s = 1.0;
-    Geometry.SetfDimensionlessL(s);
-    geomesh = Geometry.GeometricGmshMesh(grid);
-    const std::string name("Drill pipe section");
-    geomesh->SetName(name);
-    std::ofstream file("case2.vtk");
-    TPZVTKGeoMesh::PrintGMeshVTK(geomesh, file);
-    
-    
-    
-  //  MixedTest();
-    MixedTestNewMat();
+    MixedTest();
     return 0;
-    
-  
 }
 
 void H1TestMat(){
@@ -158,7 +139,12 @@ void H1TestMat(){
 }
 void MixedTest(){
     
-    TPZGeoMesh *gmesh = CreateGeoMesh(10,10,1);
+ //   TPZGeoMesh *gmesh = CreateGeoMesh(1,2,1);
+    TPZVec<REAL> x1(3,0.0);
+    TPZVec<REAL> x2(3,0.0);
+    x2[0]=1.0;
+  
+    TPZGeoMesh *gmesh = gmesh1D(x1, x2, 3);
     int flux_order = 1;
     int p_order = 1;
     
@@ -172,9 +158,13 @@ void MixedTest(){
 #endif
     }
     
-    TPZCompMesh *cmesh_flux =CreateFluxCmesh(gmesh,flux_order, false);
-    TPZCompMesh *cmesh_presure =CreatePressureCmesh(gmesh,p_order, false);
+    TPZCompMesh *cmesh_flux =CreateFluxCmesh(gmesh,flux_order);
+    TPZCompMesh *cmesh_presure =CreatePressureCmesh(gmesh,p_order);
     
+    std::ofstream outflux_antes("Flux_antes.txt");
+    cmesh_flux->Print(outflux_antes);
+    std::ofstream outpressure_antes("Pressure_antes.txt");
+    cmesh_presure->Print(outpressure_antes);
     
     TPZVec<TPZCompMesh *> fmeshvec(2);
     fmeshvec[0]=cmesh_flux;
@@ -182,32 +172,36 @@ void MixedTest(){
     gmesh->ResetReference();
     
     TPZCompMesh *MixedMesh = CMeshMultphysics(gmesh,fmeshvec);
-    
     std::ofstream file("MixedCMesh.vtk");
     TPZVTKGeoMesh::PrintCMeshVTK(MixedMesh, file);
     
     std::ofstream out("MixedCMesh.txt");
-    //    MixedMesh->Print(out);
+    MixedMesh->Print(out);
     
     
     
     std::cout << "number of equations = " << MixedMesh->NEquations() << std::endl;
-    
-    
-    
     //Solving the system:
     bool optimizeBandwidth = true;
     MixedMesh->InitializeBlock();
     
-//    TPZCompMesh * cmesh_m_Hybrid;
+    TPZCompMesh * cmesh_m_Hybrid;
 //    TPZManVector<TPZCompMesh*, 3> meshvector_Hybrid(3);
 //    TPZHybridizeHDiv hybridizer;
-//    tie(cmesh_m_Hybrid, meshvector_Hybrid) = hybridizer.Hybridize(MixedMesh, fmeshvec, true, -1.);
+//    cmesh_m_Hybrid = hybridizer.Hybridize(MixedMesh, false, 1.);
 //    cmesh_m_Hybrid->InitializeBlock();
+   
+    cmesh_m_Hybrid =MixedMesh;
+    meshvector_Hybrid = fmeshvec;
+    
+    std::ofstream outhy("MixedCMesh_Hy.txt");
+    cmesh_m_Hybrid->Print(outhy);
+    
+  
     
     bool must_opt_band_width_Q = true;
     int number_threads = 4;
-    TPZAnalysis *an = new TPZAnalysis(MixedMesh,must_opt_band_width_Q);
+    TPZAnalysis *an = new TPZAnalysis(cmesh_m_Hybrid,must_opt_band_width_Q);
     TPZElementMatrix mat;
     TPZElementMatrix ef;
     
@@ -215,7 +209,7 @@ void MixedTest(){
     mat.Print(std::cout);
     
     //
-    TPZSymetricSpStructMatrix sparse_matrix(MixedMesh);
+    TPZSymetricSpStructMatrix sparse_matrix(cmesh_m_Hybrid);
     TPZStepSolver<STATE> step;
     sparse_matrix.SetNumThreads(number_threads);
     step.SetDirect(ELDLt);
@@ -223,15 +217,30 @@ void MixedTest(){
     an->SetSolver(step);
     an->Assemble();
     an->Solve();
+    std::ofstream out2("global.txt");
+    
+    std::cout<<"order: "<<an->Mesh()->GetDefaultOrder()<<std::endl;
+//    virtual void Print(const char *name, std::ostream &out = std::cout ,const MatrixOutputFormat form = EFormatted) const;
+    
+    an->Solver().Matrix()->Print("EK= ",std::cout,EMathematicaInput);
+    an->Rhs().Print("EF= ",std::cout,EMathematicaInput);
+    an->Mesh()->Solution().Print("alphas= ",std::cout,EMathematicaInput);
+    std::ofstream filemalla("malla_sol.txt");
+    an->Mesh()->Print(filemalla);
+    std::ofstream outflux_despues("Flux_despues.txt");
+    meshvector_Hybrid[0]->Print(outflux_despues);
+    std::ofstream outpressure_despues("Pressure_despues.txt");
+    meshvector_Hybrid[1]->Print(outpressure_despues);
     
     
-    
+    TPZBuildMultiphysicsMesh::TransferFromMeshes(meshvector_Hybrid, MixedMesh);
     //POS
-    TPZManVector<std::string,10> scalnames(2), vecnames(1);
+    TPZManVector<std::string,10> scalnames(3), vecnames(1);
     vecnames[0]  = "Flux";
     
     scalnames[0] = "Pressure";
     scalnames[1] = "Permeability";
+    scalnames[2] = "Divergence";
     
     
     const int dim = an->Mesh()->Dimension();
@@ -249,22 +258,22 @@ TPZGeoMesh *CreateGeoMesh(int order, int nx, int ny){
     // Creating the Geo mesh
     TPZManVector<REAL,3> x0(3,0.),x1(3,0.0);
     x1[0] = 1;
-    x1[1] = 1;
+    x1[1] = 0;
     TPZManVector<int,2> nel(2,2);
     nel[0] = nx;
     nel[1] = ny;
     TPZGenGrid gengrid(nel,x0,x1);
-    gengrid.SetElementType(EQuadrilateral);
+    gengrid.SetElementType(EOned);
    
-    gmesh->SetDimension(2);
+    gmesh->SetDimension(1);
     gengrid.Read(gmesh);
     //gengrid.Read(gmesh,2);
     
   //  gengrid.SetBC(TPZGeoMesh *gr, int side, int bc)
-    gengrid.SetBC(gmesh, 4, -1);
-    gengrid.SetBC(gmesh, 5, -2);
-    gengrid.SetBC(gmesh, 6, -3);
-    gengrid.SetBC(gmesh, 7, -4);
+    gengrid.SetBC(gmesh, 0, -1);
+    gengrid.SetBC(gmesh, 1, -2);
+//    gengrid.SetBC(gmesh, 6, -3);
+//    gengrid.SetBC(gmesh, 7, -4);
     
     gmesh->BuildConnectivity();
     return gmesh;
@@ -353,15 +362,10 @@ TPZCompMesh *CreateCompMeshNewMat(TPZGeoMesh *gmesh, int order){
     TPZCompMesh *cmesh = new TPZCompMesh(gmesh);
     cmesh->SetDimModel(dim);
     
-    TPZDarcyFlow *mat_0 = new TPZDarcyFlow (mat_id);
     
-    TPZAutoPointer<TPZFunction<STATE> > sourcetermm = new TPZDummyFunction<STATE>(sourceterm, 5);
     
-    mat_0->SetForcingFunction(sourcetermm);
-    //    TPZDarcyFlow *mat_0 = new TPZDarcyFlow(impervious_mat,dim);
-    //    TPZDarcyFlow *mat_1 = new TPZDarcyFlow(permeable_mat,dim);
-    //
-    //  inserting volumetric materials objects
+    TPZMixedDarcyFlow *mat_0 = new TPZMixedDarcyFlow(mat_id,2);
+    
     cmesh->InsertMaterialObject(mat_0);
     
     int type_D = 0;
@@ -405,7 +409,7 @@ void sourceterm( const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
     STATE x = pt[0];
     STATE y = pt[1];
     STATE z = pt[2];
-    double fx= -2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);
+    double fx= 0.0*2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);
     
     disp[0]=fx;
 }
@@ -458,8 +462,8 @@ TPZCompMesh *CMeshMultphysics(TPZGeoMesh * gmesh, TPZVec<TPZCompMesh *> meshvec)
     //Neumann boundary conditions (flux = 0)
     
     int bottom_bc_1id = -1;
-    val2(0,0) = 0;
-    TPZMaterial * bottom_bc_1 = mat_0->CreateBC(mat_0, bottom_bc_1id, type_N, val1, val2);
+    val2(0,0) = 10;
+    TPZMaterial * bottom_bc_1 = mat_0->CreateBC(mat_0, bottom_bc_1id, type_D, val1, val2);
     mphysics->InsertMaterialObject(bottom_bc_1);
     
     int right_bc_id = -2;
@@ -468,16 +472,16 @@ TPZCompMesh *CMeshMultphysics(TPZGeoMesh * gmesh, TPZVec<TPZCompMesh *> meshvec)
     mphysics->InsertMaterialObject(right_bc);
     
 
-    int top_bc_1id = -3;
-    val2(0,0) = 0.0;
-    TPZMaterial * top_bc_1 = mat_0->CreateBC(mat_0, top_bc_1id, type_N, val1, val2);
-    mphysics->InsertMaterialObject(top_bc_1);
-    
-    
-    int left_bc_id = -4;
-    val2(0,0) = 10.0;
-    TPZMaterial * left_bc = mat_0->CreateBC(mat_0, left_bc_id, type_D, val1, val2);
-    mphysics->InsertMaterialObject(left_bc);
+//    int top_bc_1id = -3;
+//    val2(0,0) = 0.0;
+//    TPZMaterial * top_bc_1 = mat_0->CreateBC(mat_0, top_bc_1id, type_N, val1, val2);
+//    mphysics->InsertMaterialObject(top_bc_1);
+//
+//
+//    int left_bc_id = -4;
+//    val2(0,0) = 10.0;
+//    TPZMaterial * left_bc = mat_0->CreateBC(mat_0, left_bc_id, type_D, val1, val2);
+//    mphysics->InsertMaterialObject(left_bc);
     
 
     mphysics->SetAllCreateFunctionsMultiphysicElem();
@@ -495,7 +499,7 @@ TPZCompMesh *CMeshMultphysics(TPZGeoMesh * gmesh, TPZVec<TPZCompMesh *> meshvec)
     
     return mphysics;
 }
-TPZCompMesh *CreatePressureCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
+TPZCompMesh *CreatePressureCmesh(TPZGeoMesh *gmesh, int pOrder){
     int MatId = 1;
     int dim = gmesh->Dimension();
     REAL perm_0 = 1.0;
@@ -510,7 +514,6 @@ TPZCompMesh *CreatePressureCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
     cmesh->SetAllCreateFunctionsDiscontinuous();
     cmesh->ApproxSpace().CreateDisconnectedElements(true);
     
-    if (newmat==false){
         TPZMatPoisson3d *mat_0 = new TPZMatPoisson3d(MatId,dim);
         mat_0->SetParameters(perm_0, conv, convdir);
         
@@ -518,13 +521,6 @@ TPZCompMesh *CreatePressureCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
         //  inserting volumetric materials objects
         cmesh->InsertMaterialObject(mat_0);
         
-    }
-    else{
-         TPZDarcyFlow *mat_0 = new TPZDarcyFlow(MatId);
-        //  inserting volumetric materials objects
-        cmesh->InsertMaterialObject(mat_0);
-        
-    }
     
     
   
@@ -546,7 +542,7 @@ TPZCompMesh *CreatePressureCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
     
     return cmesh;
 }
-TPZCompMesh *CreateFluxCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
+TPZCompMesh *CreateFluxCmesh(TPZGeoMesh *gmesh, int pOrder){
     int Mat_Id = 1;
  
     int dim = gmesh->Dimension();
@@ -564,7 +560,6 @@ TPZCompMesh *CreateFluxCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
     //Definition of the approximation space:
     
     
-    if (newmat==false){
         TPZMatPoisson3d *mat_0 = new TPZMatPoisson3d(Mat_Id,dim);
         mat_0->SetParameters(perm_0, conv, convdir);
         
@@ -583,56 +578,22 @@ TPZCompMesh *CreateFluxCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
         // Insert boundary conditions
         //Neumann boundary conditions (flux = 0)
         int right_bc_id = -2;
-        TPZMaterial * right_bc = mat_0->CreateBC(mat_0, right_bc_id, type_N, val1, val2);
+    val2(0,0)=100.0;
+        TPZMaterial * right_bc = mat_0->CreateBC(mat_0, right_bc_id, type_D, val1, val2);
         cmesh->InsertMaterialObject(right_bc);
         
-        int left_bc_id = -4;
-        TPZMaterial * left_bc = mat_0->CreateBC(mat_0, left_bc_id, type_D, val1, val2);
-        cmesh->InsertMaterialObject(left_bc);
-        
+//        int left_bc_id = -4;
+//        TPZMaterial * left_bc = mat_0->CreateBC(mat_0, left_bc_id, type_D, val1, val2);
+//        cmesh->InsertMaterialObject(left_bc);
+    
         int bottom_bc_1id = -1;
-        TPZMaterial * bottom_bc_1 = mat_0->CreateBC(mat_0, bottom_bc_1id, type_N, val1, val2);
+        val2(0,0)=10.0;
+        TPZMaterial * bottom_bc_1 = mat_0->CreateBC(mat_0, bottom_bc_1id, type_D, val1, val2);
         cmesh->InsertMaterialObject(bottom_bc_1);
         
-        int top_bc_1id = -3;
-        TPZMaterial * top_bc_1 = mat_0->CreateBC(mat_0, top_bc_1id, type_D, val1, val2);
-        cmesh->InsertMaterialObject(top_bc_1);
-        
-        
-    }
-    else{
-        TPZDarcyFlow *mat_0 = new TPZDarcyFlow(Mat_Id);
-        //  inserting volumetric materials objects
-        cmesh->InsertMaterialObject(mat_0);
-        
-        cmesh->SetAllCreateFunctionsHDiv(); //Creating H(div) functions
-        
-        
-        int type_D = 0;
-        int type_N = 1;
-        TPZFMatrix<STATE> val1(1, 1, 0.), val2(1, 1, 0.);
-        
-        // Insert boundary conditions
-        //Neumann boundary conditions (flux = 0)
-        int right_bc_id = -2;
-        TPZMaterial * right_bc = mat_0->CreateBC(mat_0, right_bc_id, type_N, val1, val2);
-        cmesh->InsertMaterialObject(right_bc);
-        
-        int left_bc_id = -4;
-        TPZMaterial * left_bc = mat_0->CreateBC(mat_0, left_bc_id, type_D, val1, val2);
-        cmesh->InsertMaterialObject(left_bc);
-        
-        int bottom_bc_1id = -1;
-        TPZMaterial * bottom_bc_1 = mat_0->CreateBC(mat_0, bottom_bc_1id, type_N, val1, val2);
-        cmesh->InsertMaterialObject(bottom_bc_1);
-        
-        int top_bc_1id = -3;
-        TPZMaterial * top_bc_1 = mat_0->CreateBC(mat_0, top_bc_1id, type_D, val1, val2);
-        cmesh->InsertMaterialObject(top_bc_1);
-        
-    }
-    
-    
+//        int top_bc_1id = -3;
+//        TPZMaterial * top_bc_1 = mat_0->CreateBC(mat_0, top_bc_1id, type_D, val1, val2);
+//        cmesh->InsertMaterialObject(top_bc_1);
     
 
     cmesh->SetName("LaberintoTest");
@@ -644,98 +605,6 @@ TPZCompMesh *CreateFluxCmesh(TPZGeoMesh *gmesh, int pOrder, bool newmat){
 #endif
     
     return cmesh;
-}
-void MixedTestNewMat(){
-    
-    TPZGeoMesh *gmesh = CreateGeoMesh(2,10,10);
-    int flux_order = 1;
-    int p_order = 1;
-    
-    {
-#ifdef PZDEBUG
-        std::ofstream file("maze.txt");
-        gmesh->Print(file);
-        
-        std::ofstream out("maze.vtk");
-        TPZVTKGeoMesh::PrintGMeshVTK(gmesh, out, true);
-#endif
-    }
-    
-    TPZCompMesh *cmesh_flux =CreateFluxCmesh(gmesh,flux_order, true);
-    TPZCompMesh *cmesh_presure =CreatePressureCmesh(gmesh,p_order, true);
-    
-    
-    TPZVec<TPZCompMesh *> fmeshvec(2);
-    fmeshvec[0]=cmesh_flux;
-    fmeshvec[1]=cmesh_presure;
-    gmesh->ResetReference();
-    
-    TPZCompMesh *MixedMesh = CMeshMultphysicsNewMat(gmesh,fmeshvec);
-    
-    std::ofstream file("MixedCMesh.vtk");
-    TPZVTKGeoMesh::PrintCMeshVTK(MixedMesh, file);
-    
-    std::ofstream out("MixedCMesh.txt");
-    //    MixedMesh->Print(out);
-    
-    
-    
-    std::cout << "number of equations = " << MixedMesh->NEquations() << std::endl;
-    
-    
-    
-    //Solving the system:
-    bool optimizeBandwidth = true;
-    MixedMesh->InitializeBlock();
-    
-//    TPZCompMesh * cmesh_m_Hybrid;
-//    TPZManVector<TPZCompMesh*, 3> meshvector_Hybrid(3);
-//    TPZHybridizeHDiv hybridizer;
-//    tie(cmesh_m_Hybrid, meshvector_Hybrid) = hybridizer.Hybridize(MixedMesh, fmeshvec, true, -1.);
-//    cmesh_m_Hybrid->InitializeBlock();
-//
-    bool must_opt_band_width_Q = true;
-    int number_threads = 4;
-    TPZAnalysis *an = new TPZAnalysis(MixedMesh,must_opt_band_width_Q);
-    
-    //
-    TPZSymetricSpStructMatrix sparse_matrix(MixedMesh);
-    TPZStepSolver<STATE> step;
-    sparse_matrix.SetNumThreads(number_threads);
-    step.SetDirect(ELDLt);
-    an->SetStructuralMatrix(sparse_matrix);
-    an->SetSolver(step);
-    an->Assemble();
-
-    
-    TPZElementMatrix mat;
-    TPZElementMatrix ef;
-    
-    MixedMesh->Element(0)->CalcStiff(mat, ef);
-    mat.Print(std::cout);
-    
-    an->Solve();
-    
-    
-    
-    //POS
-    TPZManVector<std::string,10> scalnames(2), vecnames(1);
-    vecnames[0]  = "Flux";
-    
-    scalnames[0] = "Pressure";
-    scalnames[1] = "Permeability";
-    
-    
-    const int dim = an->Mesh()->Dimension();
-    int div = 0;
-    std::string plotfile = "hdiv_approximation.vtk";
-    an->DefineGraphMesh(dim,scalnames,vecnames,plotfile);
-    an->PostProcess(div,dim);
-    std::cout << "Standard post-processing finished." << std::endl;
-    
-    return 0;
-    
-    
 }
 
 TPZCompMesh *CMeshMultphysicsNewMat(TPZGeoMesh * gmesh, TPZVec<TPZCompMesh *> meshvec){
@@ -815,4 +684,44 @@ TPZCompMesh *CMeshMultphysicsNewMat(TPZGeoMesh * gmesh, TPZVec<TPZCompMesh *> me
 #endif
     
     return mphysics;
+}
+TPZGeoMesh *gmesh1D(TPZVec<REAL> x1,TPZVec<REAL> x2, int n){
+    TPZGeoMesh *gmesh = new TPZGeoMesh;
+//    gmesh->NodeVec().Resize(nNods+4);
+//    gmesh->NodeVec()[nNods]=Node[0];
+    
+    TPZGeoNode Node;
+    Node.SetCoord(x1);
+    gmesh->NodeVec().Resize(n+1);
+    gmesh->NodeVec()[0]=Node;
+    for (int i=0; i<=n ; i++) {
+        TPZGeoNode Node;
+        TPZVec<REAL> xi(3,0.0);
+        xi[0] = x1[0] + ((x2[0]-x1[0])/n)*i;
+        Node.SetCoord(xi);
+        gmesh->NodeVec()[i]=Node;
+    }
+    
+    for (int i=0; i<n; i++) {
+        int64_t elnum=i;
+        TPZVec<int64_t> cords(2);
+        cords[0]=i;
+        cords[1]=i+1;
+        gmesh->CreateGeoElement(EOned, cords, 1, elnum);
+    }
+    
+    gmesh->BuildConnectivity();
+    TPZGeoElSide gelside(gmesh->Element(0),0);
+    TPZGeoElBC gbc(gelside, -1);
+    int nel = gmesh->NElements();
+    TPZGeoElSide gelside2(gmesh->Element(nel-2),1);
+    TPZGeoElBC gbc2(gelside2, -2);
+    gmesh->BuildConnectivity();
+    std::ofstream file("meshoned.txt");
+    gmesh->Print(file);
+    gmesh->SetDimension(1);
+    return gmesh;
+}
+TPZCompMesh *CmeshPressure(TPZGeoMesh *gmesh){
+    
 }
