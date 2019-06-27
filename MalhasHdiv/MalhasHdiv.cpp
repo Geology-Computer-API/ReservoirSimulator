@@ -76,6 +76,11 @@
 #include "pzextractval.h"
 #endif
 
+
+
+void ShowShape(TPZVec<TPZCompMesh *> &cmeshVec, TPZCompMesh *MFMesh, TPZAnalysis &analysis, const std::string &filename, TPZVec<int64_t> &equationindices);
+
+
 //Creating geometric mesh
 TPZGeoMesh * GenerateGmesh(int nx, int ny, double l, double h);
 
@@ -100,7 +105,7 @@ using namespace std;
 
 int main(){
 
-   HDivTest(2, 2, 1, 2);
+   HDivTest(10, 10, 1, 2);
 }
 
 /**
@@ -121,22 +126,23 @@ void HDivTest(int nx, int ny, int order1, int order2){
     fmesh[0] = qmesh;
     fmesh[1] = pmesh;
     TPZMultiphysicsCompMesh *MixedMesh = GenerateMixedCmesh(fmesh, 1);
-    MixedMesh->SetDefaultOrder(order1);
+//    MixedMesh->SetDefaultOrder(order1);
     
 //Generating second mesh
     TPZCompMesh *qmesh_2 = GenerateFluxCmesh(gmesh, order2);
     TPZCompMesh  *pmesh_2 = GeneratePressureCmesh(gmesh, order2);
     TPZVec<TPZCompMesh *> fmesh_2(2);
-    fmesh[0] = qmesh_2;
-    fmesh[1] = pmesh_2;
-    TPZMultiphysicsCompMesh *MixedMesh_2 = GenerateMixedCmesh(fmesh, 2);
-    MixedMesh_2->SetDefaultOrder(order2);
+    fmesh_2[0] = qmesh_2;
+    fmesh_2[1] = pmesh_2;
+    TPZMultiphysicsCompMesh *MixedMesh_2 = GenerateMixedCmesh(fmesh_2, 2);
+//    MixedMesh_2->SetDefaultOrder(order2);
     
 //Solving the system:
     MixedMesh->InitializeBlock();
     MixedMesh_2->InitializeBlock();
     bool must_opt_band_width_Q = true;
     int number_threads = 4;
+    
     
 //Analysis
     TPZAnalysis *an = new TPZAnalysis(MixedMesh,must_opt_band_width_Q);
@@ -158,7 +164,6 @@ void HDivTest(int nx, int ny, int order1, int order2){
     
 //PostProcess
     TPZStack<std::string> scalar, vectors;
-    
     TPZManVector<std::string,10> scalnames(2), vecnames(1);
     vecnames[0]  = "Flux";
     scalnames[0] = "Pressure";
@@ -175,8 +180,21 @@ void HDivTest(int nx, int ny, int order1, int order2){
     an->DefineGraphMesh(2, scalnames, vecnames, name);
     an->PostProcess(0,2);
     
-    an_2->DefineGraphMesh(2, scalnames, vecnames, name_2);
+    an_2->DefineGraphMesh(2, scalnames, vecnames, name);
     an_2->PostProcess(0,2);
+    
+    int64_t target_index = 1;
+
+    TPZVec<int64_t> equ_indexes(1);
+    equ_indexes[0] = target_index;
+    std::string name_phi = "MixedHdiv2_shape.vtk";
+    std::string scal_name("Pressure");
+    std::string vec_name("Flux");
+    TPZBuildMultiphysicsMesh::ShowShape(fmesh_2, MixedMesh_2, *an_2, scal_name, vec_name, name_phi, equ_indexes);
+    
+//    void TPZBuildMultiphysicsMesh::ShowShape(TPZVec<TPZCompMesh *> &cmeshVec, TPZCompMesh *MFMesh, TPZAnalysis &analysis, const std::string &filename, TPZVec<int64_t> &equationindices)
+    
+    
 }
 
 /**
@@ -374,9 +392,10 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     TPZBuildMultiphysicsMesh::AddConnects(fvecmesh,MixedMesh);
     TPZBuildMultiphysicsMesh::TransferFromMeshes(fvecmesh, MixedMesh);
     
-    std::cout<<"n connects: "<<MixedMesh->NEquations()<<std::endl;
-    std::cout<<"n connects: "<<fvecmesh[0]->NEquations()<<std::endl;
-    std::cout<<"n connects: "<<fvecmesh[1]->NEquations()<<std::endl;
+    std::cout<<"n equ: "<<MixedMesh->NEquations()<<std::endl;
+    std::cout<<"n equ: "<<fvecmesh[0]->NEquations()<<std::endl;
+    std::cout<<"n equ: "<<fvecmesh[1]->NEquations()<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
     return MixedMesh;
 };
 
