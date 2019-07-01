@@ -108,7 +108,7 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    HDivTest(50, 50, 1, 2);
+    HDivTest(40, 40, 1, 2);
 }
 
 /**
