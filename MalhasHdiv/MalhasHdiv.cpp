@@ -90,7 +90,7 @@ void SolExact(const TPZVec<REAL> &ptx, TPZVec<STATE> &sol, TPZFMatrix<STATE> &fl
 TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order_internal);
 
 //Creating pressure mesh
-TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh);
+TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh, bool third_LM);
 
 //Creating flux mesh
 TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *Gmesh, int order_internal, int order_border);
@@ -108,7 +108,7 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    HDivTest(10, 10, 1, 2);
+    HDivTest(40, 40, 1, 2);
 }
 
 /**
@@ -124,31 +124,31 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     //Generating first mesh
     TPZGeoMesh *gmesh = GenerateGmesh(nx, ny, 1, 1);
     TPZMultiphysicsCompMesh *MixedMesh_coarse = 0;
+    TPZManVector<TPZCompMesh *> vecmesh(4);
     {
         TPZCompMesh  *pmesh = GeneratePressureCmesh(gmesh, order_high);
         TPZCompMesh *qmesh = GenerateFluxCmesh(gmesh, order_high, order_small);
-        TPZCompMesh *p0mesh = GenerateConstantCmesh(gmesh);
-        TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh);
-        TPZManVector<TPZCompMesh *> fmesh(4);
-        fmesh[0] = qmesh;
-        fmesh[1] = pmesh;
-        fmesh[2] = p0mesh; //pressao meia
-        fmesh[3] = distmesh;  //distribuido fluxo
-        TPZMultiphysicsCompMesh *MixedMesh_coarse = GenerateMixedCmesh(fmesh, 1);
+        TPZCompMesh *p0mesh = GenerateConstantCmesh(gmesh,false);
+        TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
+        vecmesh[0] = qmesh;
+        vecmesh[1] = pmesh;
+        vecmesh[2] = p0mesh; //pressao meia
+        vecmesh[3] = distmesh;  //distribuido fluxo
+        MixedMesh_coarse = GenerateMixedCmesh(vecmesh, 1);
     }
     //    MixedMesh->SetDefaultOrder(order1);
     bool KeepOneLagrangian = true;
     bool KeepMatrix = false;
-    TPZCompMeshTools::CreatedCondensedElements(MixedMesh_coarse, KeepOneLagrangian, KeepMatrix);
+    //TPZCompMeshTools::CreatedCondensedElements(MixedMesh_coarse, KeepOneLagrangian, KeepMatrix);
 
     TPZMultiphysicsCompMesh *MixedMesh_fine = 0;
+    TPZManVector<TPZCompMesh *> fmesh_2(4);
     {
         //Generating second mesh
         TPZCompMesh *qmesh_2 = GenerateFluxCmesh(gmesh, order_high, order_high);
         TPZCompMesh  *pmesh_2 = GeneratePressureCmesh(gmesh, order_high);
-        TPZCompMesh *p0mesh = GenerateConstantCmesh(gmesh);
-        TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh);
-        TPZManVector<TPZCompMesh *> fmesh_2(2);
+        TPZCompMesh *p0mesh = GenerateConstantCmesh(gmesh,false);
+        TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
         fmesh_2[0] = qmesh_2;
         fmesh_2[1] = pmesh_2;
         fmesh_2[2] = p0mesh;
@@ -157,7 +157,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     }
     //    MixedMesh_2->SetDefaultOrder(order2);
         /// created condensed elements for the elements that have internal nodes
-    TPZCompMeshTools::CreatedCondensedElements(MixedMesh_fine, KeepOneLagrangian, KeepMatrix);
+    //TPZCompMeshTools::CreatedCondensedElements(MixedMesh_fine, KeepOneLagrangian, KeepMatrix);
 
     //Solving the system:
     MixedMesh_coarse->InitializeBlock();
@@ -186,17 +186,24 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         for(int i=0; i<20; i++) indices[i] = i;
 //        anloc.ShowShape(filename, indices,1,"Flux");
     }
-    
+//    an_coarse->Solver().Matrix()->Print("k = ",std::cout,EMathematicaInput);
+//    an_coarse->Rhs().Print("f = ",std::cout,EMathematicaInput);
     an_coarse->Solve();
+//    an_coarse->Solution().Print("x = ",std::cout,EMathematicaInput);
     an_fine->Solve();
     
+    TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh, MixedMesh_coarse);
+    
+//    vecmesh[2]->Solution().Print("g = ",std::cout,EMathematicaInput);
     
     //PostProcess
     TPZStack<std::string> scalar, vectors;
-    TPZManVector<std::string,10> scalnames(2), vecnames(1);
+    TPZManVector<std::string,10> scalnames(4), vecnames(1);
     vecnames[0]  = "Flux";
     scalnames[0] = "Pressure";
     scalnames[1] = "Permeability";
+    scalnames[2] = "g_average";
+    scalnames[3] = "u_average";
     
     std::ofstream filePrint("MixedHdiv1.txt");
     MixedMesh_coarse->Print(filePrint);
@@ -209,7 +216,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     an_coarse->DefineGraphMesh(2, scalnames, vecnames, name);
     an_coarse->PostProcess(0,2);
     
-    an_fine->DefineGraphMesh(2, scalnames, vecnames, name);
+    an_fine->DefineGraphMesh(2, scalnames, vecnames, name_2);
     an_fine->PostProcess(0,2);
     
     int64_t target_index = 1;
@@ -301,7 +308,7 @@ TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order){
 }
 
 //Creating pressure mesh
-TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh)
+TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh, bool third_LM)
 {
     TPZCompMesh *Cmesh= new TPZCompMesh (Gmesh);
     
@@ -328,7 +335,12 @@ TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh)
     for(int i=0; i<ncon; i++)
     {
         TPZConnect &newnod = Cmesh->ConnectVec()[i];
-        newnod.SetLagrangeMultiplier(2);
+        if (third_LM) {
+            newnod.SetLagrangeMultiplier(3);
+        }else{
+            newnod.SetLagrangeMultiplier(2);
+        }
+        
     }
     return Cmesh;
 
@@ -424,8 +436,7 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     mat->SetParameters(perm, conv, convdir);
     
     TPZAutoPointer<TPZFunction<STATE> > sourceterm = new TPZDummyFunction<STATE>(Ladoderecho, 5);
-    
-//    mat->SetForcingFunction(sourceterm);
+    mat->SetForcingFunction(sourceterm);
     
     //Inserting volumetric materials objects
     MixedMesh->InsertMaterialObject(mat);
@@ -456,10 +467,12 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     MixedMesh->SetAllCreateFunctionsMultiphysicElem();
     MixedMesh->SetDimModel(dimen);
     
-    //Autobild
-    TPZManVector<int,5> active_approx_spaces(2); /// 1 stands for an active approximation spaces
+    //Autobuild
+    TPZManVector<int,5> active_approx_spaces(4); /// 1 stands for an active approximation spaces
     active_approx_spaces[0] = 1;
     active_approx_spaces[1] = 1;
+    active_approx_spaces[2] = 1;
+    active_approx_spaces[3] = 1;
     MixedMesh->BuildMultiphysicsSpace(active_approx_spaces,fvecmesh);
     
     TPZBuildMultiphysicsMesh::AddElements(fvecmesh, MixedMesh);
@@ -469,6 +482,8 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     std::cout<<"n equ: "<<MixedMesh->NEquations()<<std::endl;
     std::cout<<"n equ: "<<fvecmesh[0]->NEquations()<<std::endl;
     std::cout<<"n equ: "<<fvecmesh[1]->NEquations()<<std::endl;
+    std::cout<<"n equ: "<<fvecmesh[2]->NEquations()<<std::endl;
+    std::cout<<"n equ: "<<fvecmesh[3]->NEquations()<<std::endl;
     std::cout<<"------------------------------"<<std::endl;
     return MixedMesh;
 };
