@@ -78,10 +78,6 @@
 #endif
 
 
-
-void ShowShape(TPZVec<TPZCompMesh *> &cmeshVec, TPZCompMesh *MFMesh, TPZAnalysis &analysis, const std::string &filename, TPZVec<int64_t> &equationindices);
-
-
 //Creating geometric mesh
 TPZGeoMesh * GenerateGmesh(int nx, int ny, double l, double h);
 
@@ -103,7 +99,7 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *Gmesh, int order_internal, int order
 TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order);
 
 //Test for the HDiv case
-void HDivTest(int nx, int ny, int order1, int order2);
+void HDivTest(int nx, int ny, int order_small, int order_high);
 
 using namespace std;
 
@@ -136,8 +132,8 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         TPZManVector<TPZCompMesh *> fmesh(4);
         fmesh[0] = qmesh;
         fmesh[1] = pmesh;
-        fmesh[2] = p0mesh;
-        fmesh[3] = distmesh;
+        fmesh[2] = p0mesh; //pressao meia
+        fmesh[3] = distmesh;  //distribuido fluxo
         TPZMultiphysicsCompMesh *MixedMesh_coarse = GenerateMixedCmesh(fmesh, 1);
     }
     //    MixedMesh->SetDefaultOrder(order1);
@@ -188,7 +184,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         std::string filename("Shape.vtk");
         TPZVec<int64_t> indices(20);
         for(int i=0; i<20; i++) indices[i] = i;
-        anloc.ShowShape(filename, indices,1,"Flux");
+//        anloc.ShowShape(filename, indices,1,"Flux");
     }
     
     an_coarse->Solve();
@@ -321,8 +317,7 @@ TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh)
     TPZNullMaterial *mat =new TPZNullMaterial(MaterialId);
     mat->SetDimension(dimen);
     mat->SetNStateVariables(1);
-    
-    //No convection
+
     //Insert material to mesh
     Cmesh->InsertMaterialObject(mat);
     
