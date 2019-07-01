@@ -108,7 +108,7 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    HDivTest(40, 40, 1, 2);
+    HDivTest(50, 50, 1, 2);
 }
 
 /**
@@ -139,7 +139,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     //    MixedMesh->SetDefaultOrder(order1);
     bool KeepOneLagrangian = true;
     bool KeepMatrix = false;
-    //TPZCompMeshTools::CreatedCondensedElements(MixedMesh_coarse, KeepOneLagrangian, KeepMatrix);
+    TPZCompMeshTools::CreatedCondensedElements(MixedMesh_coarse, KeepOneLagrangian, KeepMatrix);
 
     TPZMultiphysicsCompMesh *MixedMesh_fine = 0;
     TPZManVector<TPZCompMesh *> fmesh_2(4);
@@ -157,7 +157,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     }
     //    MixedMesh_2->SetDefaultOrder(order2);
         /// created condensed elements for the elements that have internal nodes
-    //TPZCompMeshTools::CreatedCondensedElements(MixedMesh_fine, KeepOneLagrangian, KeepMatrix);
+    TPZCompMeshTools::CreatedCondensedElements(MixedMesh_fine, KeepOneLagrangian, KeepMatrix);
 
     //Solving the system:
     MixedMesh_coarse->InitializeBlock();
