@@ -81,21 +81,22 @@
 //Creating geometric mesh
 TPZGeoMesh * GenerateGmesh(int nx, int ny, double l, double h);
 
+//Stablish de form fuction
 void Ladoderecho (const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
 
-//double RunErrors(int n, int order);
+//Stablish an exact solution
 void SolExact(const TPZVec<REAL> &ptx, TPZVec<STATE> &sol, TPZFMatrix<STATE> &flux);
 
-//Creating pressure mesh
+//Creating computational pressure mesh
 TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order_internal);
 
-//Creating pressure mesh
+//Creating computational constant pressure mesh
 TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh, bool third_LM);
 
-//Creating flux mesh
+//Creating computational flux mesh
 TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *Gmesh, int order_internal, int order_border);
 
-//Creating mixed mesh
+//Creating computational mixed mesh
 TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order);
 
 //Test for the HDiv case
@@ -108,23 +109,23 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    HDivTest(40, 40, 1, 2);
+    HDivTest(2, 2, 1, 2);
 }
 
 /**
  * @brief Generates a Hdiv test
  * @param nx: number of partions on x
  * @param ny: number of partions on y
- * @param order1 for the first mesh
- * @param order2 for the second mesh
+ * @param order_small: for the low order mesh
+ * @param order_high: for the high order mesh
  * @return Two computational meshes with different orders
  */
 void HDivTest(int nx, int ny, int order_small, int order_high){
     
-    //Generating first mesh
+    //Generating low order mesh
     TPZGeoMesh *gmesh = GenerateGmesh(nx, ny, 1, 1);
     TPZMultiphysicsCompMesh *MixedMesh_coarse = 0;
-    TPZManVector<TPZCompMesh *> vecmesh(4);
+    TPZManVector<TPZCompMesh *> vecmesh(4); //vecmesh: Stands for vector coarse mesh
     {
         TPZCompMesh  *pmesh = GeneratePressureCmesh(gmesh, order_high);
         TPZCompMesh *qmesh = GenerateFluxCmesh(gmesh, order_high, order_small);
@@ -132,49 +133,50 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
         vecmesh[0] = qmesh;
         vecmesh[1] = pmesh;
-        vecmesh[2] = p0mesh; //pressao meia
-        vecmesh[3] = distmesh;  //distribuido fluxo
+        vecmesh[2] = p0mesh; //Mean pressure
+        vecmesh[3] = distmesh;  //Distributed flux
         MixedMesh_coarse = GenerateMixedCmesh(vecmesh, 1);
     }
-    //    MixedMesh->SetDefaultOrder(order1);
+    // Created condensed elements for the elements that have internal nodes
     bool KeepOneLagrangian = true;
     bool KeepMatrix = false;
     TPZCompMeshTools::CreatedCondensedElements(MixedMesh_coarse, KeepOneLagrangian, KeepMatrix);
 
     TPZMultiphysicsCompMesh *MixedMesh_fine = 0;
-    TPZManVector<TPZCompMesh *> fmesh_2(4);
+    TPZManVector<TPZCompMesh *> vefmesh(4); //vefmesh: Stands for vector fine mesh
     {
         //Generating second mesh
         TPZCompMesh *qmesh_2 = GenerateFluxCmesh(gmesh, order_high, order_high);
         TPZCompMesh  *pmesh_2 = GeneratePressureCmesh(gmesh, order_high);
         TPZCompMesh *p0mesh = GenerateConstantCmesh(gmesh,false);
         TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
-        fmesh_2[0] = qmesh_2;
-        fmesh_2[1] = pmesh_2;
-        fmesh_2[2] = p0mesh;
-        fmesh_2[3] = distmesh;
-        MixedMesh_fine = GenerateMixedCmesh(fmesh_2, 2);
+        vefmesh[0] = qmesh_2;
+        vefmesh[1] = pmesh_2;
+        vefmesh[2] = p0mesh;
+        vefmesh[3] = distmesh;
+        MixedMesh_fine = GenerateMixedCmesh(vefmesh, 2);
     }
-    //    MixedMesh_2->SetDefaultOrder(order2);
-        /// created condensed elements for the elements that have internal nodes
+
+    // Created condensed elements for the elements that have internal nodes
     TPZCompMeshTools::CreatedCondensedElements(MixedMesh_fine, KeepOneLagrangian, KeepMatrix);
 
     //Solving the system:
     MixedMesh_coarse->InitializeBlock();
     MixedMesh_fine->InitializeBlock();
-    bool must_opt_band_width_Q = true;
+    bool must_opt_band_width_Q = false;
     int number_threads = 4;
+    
     //Analysis
     TPZAnalysis *an_coarse = new TPZAnalysis(MixedMesh_coarse,must_opt_band_width_Q);
     TPZAnalysis *an_fine = new TPZAnalysis(MixedMesh_fine,must_opt_band_width_Q);
-    TPZSkylineStructMatrix sparse_matrix(MixedMesh_coarse);
-    TPZSkylineStructMatrix sparse_matrix_2(MixedMesh_fine);
+    TPZSkylineStructMatrix sparse_matrix_coarse(MixedMesh_coarse);
+    TPZSkylineStructMatrix sparse_matrix_fine(MixedMesh_fine);
     TPZStepSolver<STATE> step;
-    sparse_matrix.SetNumThreads(number_threads);
-    sparse_matrix_2.SetNumThreads(number_threads);
+    sparse_matrix_coarse.SetNumThreads(number_threads);
+    sparse_matrix_fine.SetNumThreads(number_threads);
     step.SetDirect(ELDLt);
-    an_coarse->SetStructuralMatrix(sparse_matrix);
-    an_fine->SetStructuralMatrix(sparse_matrix_2);
+    an_coarse->SetStructuralMatrix(sparse_matrix_coarse);
+    an_fine->SetStructuralMatrix(sparse_matrix_fine);
     an_coarse->SetSolver(step);
     an_fine->SetSolver(step);
     an_coarse->Assemble();
@@ -184,7 +186,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         std::string filename("Shape.vtk");
         TPZVec<int64_t> indices(20);
         for(int i=0; i<20; i++) indices[i] = i;
-//        anloc.ShowShape(filename, indices,1,"Flux");
+        anloc.ShowShape(filename, indices,1,"Flux");
     }
 //    an_coarse->Solver().Matrix()->Print("k = ",std::cout,EMathematicaInput);
 //    an_coarse->Rhs().Print("f = ",std::cout,EMathematicaInput);
@@ -205,18 +207,18 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     scalnames[2] = "g_average";
     scalnames[3] = "u_average";
     
-    std::ofstream filePrint("MixedHdiv1.txt");
-    MixedMesh_coarse->Print(filePrint);
-    std::string name = "MixedHdiv1.vtk";
+    std::ofstream filePrint_coarse("MixedHdiv_coarse.txt");
+    MixedMesh_coarse->Print(filePrint_coarse);
+    std::string name_coarse = "MixedHdiv_coarse.vtk";
     
-    std::ofstream filePrint_2("MixedHdiv2.txt");
-    MixedMesh_fine->Print(filePrint_2);
-    std::string name_2 = "MixedHdiv2.vtk";
+    std::ofstream filePrint_fine("MixedHdiv_fine.txt");
+    MixedMesh_fine->Print(filePrint_fine);
+    std::string name_fine = "MixedHdiv_fine.vtk";
     
-    an_coarse->DefineGraphMesh(2, scalnames, vecnames, name);
+    an_coarse->DefineGraphMesh(2, scalnames, vecnames, name_coarse);
     an_coarse->PostProcess(0,2);
     
-    an_fine->DefineGraphMesh(2, scalnames, vecnames, name_2);
+    an_fine->DefineGraphMesh(2, scalnames, vecnames, name_fine);
     an_fine->PostProcess(0,2);
     
     int64_t target_index = 1;
@@ -226,10 +228,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     std::string name_phi = "MixedHdiv2_shape.vtk";
     std::string scal_name("Pressure");
     std::string vec_name("Flux");
-//    TPZBuildMultiphysicsMesh::ShowShape(fmesh_2, MixedMesh_fine, *an_fine, scal_name, vec_name, name_phi, equ_indexes);
-    
-    //    void TPZBuildMultiphysicsMesh::ShowShape(TPZVec<TPZCompMesh *> &cmeshVec, TPZCompMesh *MFMesh, TPZAnalysis &analysis, const std::string &filename, TPZVec<int64_t> &equationindices)
-    
+//    TPZBuildMultiphysicsMesh::ShowShape(vefmesh, MixedMesh_fine, *an_fine, name_phi, equ_indexes);
     
 }
 
@@ -285,7 +284,7 @@ TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order){
     int MaterialId = 1;
     STATE Permeability=1;
     
-    TPZMatPoisson3d *mat =new TPZMatPoisson3d(MaterialId, dimen);
+    TPZMatPoisson3d *mat = new TPZMatPoisson3d(MaterialId, dimen);
     
     //No convection
     REAL conv=0;
@@ -340,17 +339,16 @@ TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh, bool third_LM)
         }else{
             newnod.SetLagrangeMultiplier(2);
         }
-        
     }
     return Cmesh;
-
 }
 
 
 /**
  * @brief Generates the flux computational mesh
- * @param Geometric mesh
- * @param Order
+ * @param mesh: Geometric mesh
+ * @param order_internal: Order used for internal elements
+ * @param order_border: Order used for border elements
  * @return Flux computational mesh
  */
 TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_border){
@@ -414,10 +412,11 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
 
 /**
  * @brief Generates the mixed computational mesh
- * @param Vector thats contains flux and pressure computational mesh
- * @param Order
+ * @param fvecmesh: Vector thats contains flux and pressure computational mesh
+ * @param order: Order
  * @return Mixed computational mesh
  */
+
 TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order){
     TPZGeoMesh *gmesh = fvecmesh[1]->Reference();
     TPZMultiphysicsCompMesh *MixedMesh = new TPZMultiphysicsCompMesh(gmesh);
@@ -490,7 +489,8 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
 
 /**
  * @brief Generates the force function
- * @param Points values
+ * @param pt: Points values
+ * @param disp:
  * @return Force function value
  */
 void Ladoderecho (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
@@ -502,5 +502,5 @@ void Ladoderecho (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
     double fx= -2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);
     
     disp[0]=fx;
-    //  disp[0]=0.0;
+      disp[0]=0.0;
 }
