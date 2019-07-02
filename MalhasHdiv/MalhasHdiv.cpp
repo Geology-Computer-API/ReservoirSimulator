@@ -133,15 +133,38 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
         vecmesh[0] = qmesh;
         vecmesh[1] = pmesh;
-        vecmesh[2] = p0mesh; //Mean pressure
-        vecmesh[3] = distmesh;  //Distributed flux
+        vecmesh[3] = p0mesh; //Mean pressure
+        vecmesh[2] = distmesh;  //Distributed flux
         MixedMesh_coarse = GenerateMixedCmesh(vecmesh, 1);
     }
     // Created condensed elements for the elements that have internal nodes
-    bool KeepOneLagrangian = true;
+    bool KeepOneLagrangian = false;
     bool KeepMatrix = false;
+    {
+        MixedMesh_coarse->ComputeNodElCon();
+        int dim = MixedMesh_coarse->Dimension();
+        int64_t nel = MixedMesh_coarse->NElements();
+        for (int64_t el =0; el<nel; el++) {
+            TPZCompEl *cel = MixedMesh_coarse->Element(el);
+            if(!cel) continue;
+            TPZGeoEl *gel = cel->Reference();
+            if(!gel) continue;
+            if(gel->Dimension() != dim) continue;
+            int nc = cel->NConnects();
+            cel->Connect(nc-1).IncrementElConnected();
+        }
+    }
+    
+    {
+        std::ofstream out("coarse.txt");
+        MixedMesh_coarse->Print(out);
+    }
     TPZCompMeshTools::CreatedCondensedElements(MixedMesh_coarse, KeepOneLagrangian, KeepMatrix);
 
+    {
+        std::ofstream out("coarse.txt");
+        MixedMesh_coarse->Print(out);
+    }
     TPZMultiphysicsCompMesh *MixedMesh_fine = 0;
     TPZManVector<TPZCompMesh *> vefmesh(4); //vefmesh: Stands for vector fine mesh
     {
@@ -152,11 +175,26 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
         vefmesh[0] = qmesh_2;
         vefmesh[1] = pmesh_2;
-        vefmesh[2] = p0mesh;
-        vefmesh[3] = distmesh;
+        vefmesh[3] = p0mesh;
+        vefmesh[2] = distmesh;
         MixedMesh_fine = GenerateMixedCmesh(vefmesh, 2);
     }
 
+    
+    {
+        MixedMesh_fine->ComputeNodElCon();
+        int dim = MixedMesh_fine->Dimension();
+        int64_t nel = MixedMesh_fine->NElements();
+        for (int64_t el =0; el<nel; el++) {
+            TPZCompEl *cel = MixedMesh_fine->Element(el);
+            if(!cel) continue;
+            TPZGeoEl *gel = cel->Reference();
+            if(!gel) continue;
+            if(gel->Dimension() != dim) continue;
+            int nc = cel->NConnects();
+            cel->Connect(nc-1).IncrementElConnected();
+        }
+    }
     // Created condensed elements for the elements that have internal nodes
     TPZCompMeshTools::CreatedCondensedElements(MixedMesh_fine, KeepOneLagrangian, KeepMatrix);
 
