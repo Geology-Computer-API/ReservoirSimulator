@@ -71,6 +71,9 @@
 #include "TPZMultiphysicsCompMesh.h"
 #include "TPZCompMeshTools.h"
 
+#include "pzcmesh.h"
+
+
 #ifdef _AUTODIFF
 #include "tfad.h"
 #include "fad.h"
@@ -99,8 +102,15 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *Gmesh, int order_internal, int order
 //Creating computational mixed mesh
 TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order);
 
+//Creates index vector
+void IndexVectorCoFi(TPZMultiphysicsCompMesh *Coarse_sol, TPZMultiphysicsCompMesh *Fine_sol, TPZVec<int64_t> & indexvec);
+
 //Test for the HDiv case
 void HDivTest(int nx, int ny, int order_small, int order_high);
+
+//Transfer DOF from coarse mesh to fine mesh
+void TransferDegreeOfFreedom(TPZFMatrix<STATE> & CoarseDoF, TPZFMatrix<STATE> & FineDoF, TPZVec<int64_t> & DoFIndexes);
+
 
 using namespace std;
 
@@ -109,7 +119,7 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    HDivTest(2, 2, 1, 2);
+    HDivTest(100, 100, 1, 2);
 }
 
 /**
@@ -131,10 +141,11 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         TPZCompMesh *qmesh = GenerateFluxCmesh(gmesh, order_high, order_small);
         TPZCompMesh *p0mesh = GenerateConstantCmesh(gmesh,false);
         TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
-        vecmesh[0] = qmesh;
-        vecmesh[1] = pmesh;
+        vecmesh[0] = qmesh; //Flux
+        vecmesh[1] = pmesh; //Pressure
+        vecmesh[2] = distmesh; //Distributed flux
         vecmesh[3] = p0mesh; //Mean pressure
-        vecmesh[2] = distmesh;  //Distributed flux
+        
         MixedMesh_coarse = GenerateMixedCmesh(vecmesh, 1);
     }
     // Created condensed elements for the elements that have internal nodes
@@ -164,6 +175,8 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     {
         std::ofstream out("coarse.txt");
         MixedMesh_coarse->Print(out);
+        std::ofstream out2("cone.txt");
+        MixedMesh_coarse->ConnectVec()[0];
     }
     TPZMultiphysicsCompMesh *MixedMesh_fine = 0;
     TPZManVector<TPZCompMesh *> vefmesh(4); //vefmesh: Stands for vector fine mesh
@@ -175,8 +188,9 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
         TPZCompMesh *distmesh = GenerateConstantCmesh(gmesh,true);
         vefmesh[0] = qmesh_2;
         vefmesh[1] = pmesh_2;
-        vefmesh[3] = p0mesh;
         vefmesh[2] = distmesh;
+        vefmesh[3] = p0mesh;
+
         MixedMesh_fine = GenerateMixedCmesh(vefmesh, 2);
     }
 
@@ -249,6 +263,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     MixedMesh_coarse->Print(filePrint_coarse);
     std::string name_coarse = "MixedHdiv_coarse.vtk";
     
+    
     std::ofstream filePrint_fine("MixedHdiv_fine.txt");
     MixedMesh_fine->Print(filePrint_fine);
     std::string name_fine = "MixedHdiv_fine.vtk";
@@ -267,7 +282,13 @@ void HDivTest(int nx, int ny, int order_small, int order_high){
     std::string scal_name("Pressure");
     std::string vec_name("Flux");
 //    TPZBuildMultiphysicsMesh::ShowShape(vefmesh, MixedMesh_fine, *an_fine, name_phi, equ_indexes);
+
+    TPZVec<int64_t> indexvec;
+    IndexVectorCoFi(MixedMesh_coarse, MixedMesh_fine,indexvec);
+    std::cout<<"n equ: "<<indexvec<<std::endl;
+    TransferDegreeOfFreedom(MixedMesh_coarse->Solution(), MixedMesh_fine->Solution(), indexvec);
     
+
 }
 
 /**
@@ -528,8 +549,7 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
 /**
  * @brief Generates the force function
  * @param pt: Points values
- * @param disp:
- * @return Force function value
+ * @param disp: Vector
  */
 void Ladoderecho (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
     
@@ -540,5 +560,64 @@ void Ladoderecho (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
     double fx= -2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);
     
     disp[0]=fx;
-      disp[0]=0.0;
+//      disp[0]=0.0;
+}
+
+/**
+ * @brief Generates a index vector which relates coarse and fine mesh
+ * @param Coarse_sol: Coarse mesh
+ * @param Fine_sol: Fine mesh
+ * @param indexvec:
+ */
+void IndexVectorCoFi(TPZMultiphysicsCompMesh *Coarse_sol, TPZMultiphysicsCompMesh *Fine_sol, TPZVec<int64_t> & indexvec)
+{
+    int64_t maxcone = Coarse_sol->NConnects();
+    
+    int64_t indexvecsize = 0;
+    for (int j=0; j<maxcone; j++) {
+        bool is_condensed = Coarse_sol->ConnectVec()[j].IsCondensed();
+        if (is_condensed == true ) continue;
+
+        int64_t sequence_coarse = Coarse_sol->ConnectVec()[j].SequenceNumber();
+        int blocksize_coarse = Coarse_sol->Block().Size(sequence_coarse);
+
+        indexvecsize += blocksize_coarse;
+    }
+    indexvec.Resize(indexvecsize,-1);
+    
+    for (int j=0; j<maxcone; j++) {
+        bool is_condensed = Coarse_sol->ConnectVec()[j].IsCondensed();
+        if (is_condensed == true ) continue;
+
+        int64_t sequence_coarse = Coarse_sol->ConnectVec()[j].SequenceNumber();
+        int64_t sequence_fine = Fine_sol->ConnectVec()[j].SequenceNumber();
+        int blocksize_coarse = Coarse_sol->Block().Size(sequence_coarse);
+        int blocksize_fine = Fine_sol->Block().Size(sequence_fine);
+
+        if (blocksize_coarse > blocksize_fine) {
+            DebugStop();
+
+        }
+    
+        for(int i=0; i<blocksize_coarse; i++){
+            int64_t pos_coarse = Coarse_sol->Block().Position(sequence_coarse);
+            int64_t pos_fine = Fine_sol->Block().Position(sequence_fine);
+            indexvec[pos_coarse+i] = pos_fine+i;
+        }
+    }
+}
+
+/**
+ * @brief Transfer DOF from coarse to fine mesh
+ * @param CoarseDoF: Solution coarse matrix
+ * @param FineDoF: Solution fine matrix
+ * @param DoFIndexes: DOF index vector
+ */
+void TransferDegreeOfFreedom(TPZFMatrix<STATE> & CoarseDoF, TPZFMatrix<STATE> & FineDoF, TPZVec<int64_t> & DoFIndexes){
+    
+    int64_t n_data = DoFIndexes.size();
+    for (int64_t i = 0 ; i < n_data; i++) {
+        FineDoF(DoFIndexes[i],0) = CoarseDoF(i,0);
+    }
+
 }
