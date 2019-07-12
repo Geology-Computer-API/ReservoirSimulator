@@ -124,7 +124,7 @@ int main(){
     InitializePZLOG();
 #endif
 //    HDivTest(4, 4, 1, 4, false);
-    HDivTestOne(50, 1, 2, false);
+    HDivTestOne(50, 1, 2, true);
 }
 
 /**
