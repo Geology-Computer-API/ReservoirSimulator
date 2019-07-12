@@ -123,7 +123,7 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    HDivTestOne(2, 1, 2, false);
+    HDivTestOne(2, 1, 1, false);
 }
 
 /**
@@ -491,16 +491,19 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
     
     Cmesh->AutoBuild();
     
-    int64_t nel = Cmesh->NElements();
-    for (int el=0; el<nel; el++) {
-        TPZCompEl *cel = Cmesh->Element(el);
-        if(!cel) continue;
-        TPZInterpolatedElement *intel = dynamic_cast<TPZInterpolatedElement *>(cel);
-        if(!intel) DebugStop();
-        TPZGeoEl *gel = intel->Reference();
-        intel->SetSideOrder(gel->NSides()-1, order_internal);
+    if (order_border < order_internal) {
+        int64_t nel = Cmesh->NElements();
+        for (int el=0; el<nel; el++) {
+            TPZCompEl *cel = Cmesh->Element(el);
+            if(!cel) continue;
+            TPZInterpolatedElement *intel = dynamic_cast<TPZInterpolatedElement *>(cel);
+            if(!intel) DebugStop();
+            TPZGeoEl *gel = intel->Reference();
+            intel->SetSideOrder(gel->NSides()-1, order_internal);
+        }
+        Cmesh->ExpandSolution();
     }
-    Cmesh->ExpandSolution();
+    
     return Cmesh;
 }
 
@@ -669,12 +672,12 @@ void HDivTestOne(int nx, int order_small, int order_high, bool condense_equation
     
     
     //Generating low order mesh
-    TPZGeoMesh *gmesh = GenerateGmeshOne(nx, 40);
+    TPZGeoMesh *gmesh = GenerateGmeshOne(nx, 1);
     TPZMultiphysicsCompMesh *MixedMesh_coarse = 0;
     TPZManVector<TPZCompMesh *> vecmesh_c(4); //vecmesh: Stands for vector coarse mesh
     {
         TPZCompMesh *q_cmesh = GenerateFluxCmesh(gmesh, order_high, order_small);
-        TPZCompMesh *p_cmesh = GeneratePressureCmesh(gmesh, order_high);
+        TPZCompMesh *p_cmesh = GeneratePressureCmesh(gmesh, order_small-1);
         TPZCompMesh *gavg_cmesh = GenerateConstantCmesh(gmesh,true);
         TPZCompMesh *pavg_cmesh = GenerateConstantCmesh(gmesh,false);
         vecmesh_c[0] = q_cmesh;   //Flux
@@ -686,7 +689,7 @@ void HDivTestOne(int nx, int order_small, int order_high, bool condense_equation
     }
     
     
-    {// Computing element matrix and rhs
+    if(0){// Computing element matrix and rhs
         
         int n_el = MixedMesh_coarse->NElements();
         {
@@ -695,16 +698,21 @@ void HDivTestOne(int nx, int order_small, int order_high, bool condense_equation
             cel->CalcStiff(ek, ef);
             ek.fMat.Print("k1=",std::cout,EMathematicaInput);
             ef.fMat.Print("r2=",std::cout,EMathematicaInput);
+//            std::cout << "dest = " << ek.fDestinationIndex << std::endl;
         }
+        
         {
             TPZCompEl * cel = MixedMesh_coarse->Element(1);
             TPZElementMatrix ek,ef;
             cel->CalcStiff(ek, ef);
             ek.fMat.Print("k2=",std::cout,EMathematicaInput);
             ef.fMat.Print("r2=",std::cout,EMathematicaInput);
+//            std::cout << "dest = " << ek.fDestinationIndex << std::endl;
         }
         
     }
+    
+    
     
     if (condense_equations_Q) {
         MixedMesh_coarse->ComputeNodElCon();
@@ -783,6 +791,9 @@ void HDivTestOne(int nx, int order_small, int order_high, bool condense_equation
         an_f->Assemble();
         an_c->Solve();
         an_f->Solve();
+        
+        an_c->Rhs().Print("r= ",std::cout,EMathematicaInput);
+        an_c->Solution().Print("x= ",std::cout,EMathematicaInput);
         
 //        TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_c, MixedMesh_coarse);
         
