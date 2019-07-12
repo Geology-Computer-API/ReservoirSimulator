@@ -113,7 +113,7 @@ TPZGeoMesh * GenerateGmeshOne(int nx, double l);
 //Transfer DOF from coarse mesh to fine mesh
 void TransferDegreeOfFreedom(TPZFMatrix<STATE> & CoarseDoF, TPZFMatrix<STATE> & FineDoF, TPZVec<int64_t> & DoFIndexes);
 
-void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must_opt_band_width_Q, int number_threads, TPZAnalysis *an_c,TPZAnalysis *an_f);
+void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must_opt_band_width_Q, int number_threads, TPZAnalysis *an_c,TPZAnalysis *an_f, bool UsePardiso_Q);
 
 
 using namespace std;
@@ -124,7 +124,7 @@ int main(){
     InitializePZLOG();
 #endif
 //    HDivTest(4, 4, 1, 4, false);
-    HDivTestOne(10, 1, 2, false);
+    HDivTestOne(50, 1, 2, false);
 }
 
 /**
@@ -220,7 +220,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equ
     int number_threads = 0;
     TPZAnalysis *an_c = new TPZAnalysis;
     TPZAnalysis *an_f = new TPZAnalysis;
-    ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f);
+    ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f, true);
     
     if(render_shapes_Q){
         TPZAnalysis anloc(MixedMesh_coarse,false);
@@ -309,23 +309,37 @@ void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equ
 
 }
 
-void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must_opt_band_width_Q, int number_threads, TPZAnalysis *an_c,TPZAnalysis *an_f){
+void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must_opt_band_width_Q, int number_threads, TPZAnalysis *an_c,TPZAnalysis *an_f, bool UsePardiso_Q){
     
     an_c->SetCompMesh(cmesh_c,must_opt_band_width_Q);
     an_f->SetCompMesh(cmesh_f,must_opt_band_width_Q);
-    
-    TPZSkylineStructMatrix sparse_matrix_coarse(cmesh_c);
-    TPZSkylineStructMatrix sparse_matrix_fine(cmesh_f);
-    
     TPZStepSolver<STATE> step;
-    sparse_matrix_coarse.SetNumThreads(number_threads);
-    sparse_matrix_fine.SetNumThreads(number_threads);
-    step.SetDirect(ELDLt);
+    if (UsePardiso_Q) {
+        
+        TPZSymetricSpStructMatrix sparse_matrix_coarse(cmesh_c);
+        TPZSymetricSpStructMatrix sparse_matrix_fine(cmesh_f);
+        sparse_matrix_coarse.SetNumThreads(number_threads);
+        sparse_matrix_fine.SetNumThreads(number_threads);
+        an_c->SetStructuralMatrix(sparse_matrix_coarse);
+        an_f->SetStructuralMatrix(sparse_matrix_fine);
+        
+    }else{
+        
+        TPZSkylineStructMatrix sparse_matrix_coarse(cmesh_c);
+        TPZSkylineStructMatrix sparse_matrix_fine(cmesh_f);
+        sparse_matrix_coarse.SetNumThreads(number_threads);
+        sparse_matrix_fine.SetNumThreads(number_threads);
+        an_c->SetStructuralMatrix(sparse_matrix_coarse);
+        an_f->SetStructuralMatrix(sparse_matrix_fine);
+
+    }
     
-    an_c->SetStructuralMatrix(sparse_matrix_coarse);
-    an_f->SetStructuralMatrix(sparse_matrix_fine);
+    step.SetDirect(ELDLt);
     an_c->SetSolver(step);
     an_f->SetSolver(step);
+    
+
+
 }
 
 /**
@@ -410,7 +424,6 @@ TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh, bool third_LM)
     Cmesh->SetDimModel(Gmesh->Dimension());
     Cmesh->SetDefaultOrder(0);
     Cmesh->SetAllCreateFunctionsDiscontinuous();
-//    Cmesh->ApproxSpace().CreateDisconnectedElements(true);
 
     //Add material to the mesh
     int dimen = Gmesh->Dimension();
@@ -481,30 +494,28 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
     TPZMaterial *bc2 = mat->CreateBC(mat, BC2, D, val1, val2);
     Cmesh->InsertMaterialObject(bc2);
     
-//    int BC3=-3;
-//    val2(0,0)=0;
-//    TPZMaterial *bc3 = mat->CreateBC(mat, BC3, D, val1, val2);
-//    Cmesh->InsertMaterialObject(bc3);
-//
-//    int BC4=-4;
-//    val2(0,0)=0;
-//    TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
-//    Cmesh->InsertMaterialObject(bc4);
+    int BC3=-3;
+    val2(0,0)=0;
+    TPZMaterial *bc3 = mat->CreateBC(mat, BC3, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc3);
+
+    int BC4=-4;
+    val2(0,0)=0;
+    TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc4);
     
     Cmesh->AutoBuild();
     
-    if (order_border < order_internal) {
-        int64_t nel = Cmesh->NElements();
-        for (int el=0; el<nel; el++) {
-            TPZCompEl *cel = Cmesh->Element(el);
-            if(!cel) continue;
-            TPZInterpolatedElement *intel = dynamic_cast<TPZInterpolatedElement *>(cel);
-            if(!intel) DebugStop();
-            TPZGeoEl *gel = intel->Reference();
-            intel->SetSideOrder(gel->NSides()-1, order_internal);
-        }
-        Cmesh->ExpandSolution();
+    int64_t nel = Cmesh->NElements();
+    for (int el=0; el<nel; el++) {
+        TPZCompEl *cel = Cmesh->Element(el);
+        if(!cel) continue;
+        TPZInterpolatedElement *intel = dynamic_cast<TPZInterpolatedElement *>(cel);
+        if(!intel) DebugStop();
+        TPZGeoEl *gel = intel->Reference();
+        intel->SetSideOrder(gel->NSides()-1, order_internal);
     }
+    Cmesh->ExpandSolution();
     
     return Cmesh;
 }
@@ -524,8 +535,6 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     int dimen= gmesh->Dimension();
     int matnum=1;
     REAL perm=1;
-    REAL conv=0;
-    TPZVec<REAL> convdir(dimen , 0.0);
     
     //Inserting material
     TPZMixedDarcyWithFourSpaces * mat = new TPZMixedDarcyWithFourSpaces(matnum, dimen);
@@ -689,32 +698,6 @@ void HDivTestOne(int nx, int order_small, int order_high, bool condense_equation
         MixedMesh_coarse = GenerateMixedCmesh(vecmesh_c, 1);
     }
     
-    
-//    if(0){// Computing element matrix and rhs
-//
-//        int n_el = MixedMesh_coarse->NElements();
-//        {
-//            TPZCompEl * cel = MixedMesh_coarse->Element(0);
-//            TPZElementMatrix ek,ef;
-//            cel->CalcStiff(ek, ef);
-//            ek.fMat.Print("k1=",std::cout,EMathematicaInput);
-//            ef.fMat.Print("r2=",std::cout,EMathematicaInput);
-////            std::cout << "dest = " << ek.fDestinationIndex << std::endl;
-//        }
-//
-//        {
-//            TPZCompEl * cel = MixedMesh_coarse->Element(1);
-//            TPZElementMatrix ek,ef;
-//            cel->CalcStiff(ek, ef);
-//            ek.fMat.Print("k2=",std::cout,EMathematicaInput);
-//            ef.fMat.Print("r2=",std::cout,EMathematicaInput);
-////            std::cout << "dest = " << ek.fDestinationIndex << std::endl;
-//        }
-//
-//    }
-    
-    
-    
     if (condense_equations_Q) {
         MixedMesh_coarse->ComputeNodElCon();
         int dim = MixedMesh_coarse->Dimension();
@@ -775,7 +758,7 @@ void HDivTestOne(int nx, int order_small, int order_high, bool condense_equation
     int number_threads = 0;
     TPZAnalysis *an_c = new TPZAnalysis;
     TPZAnalysis *an_f = new TPZAnalysis;
-    ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f);
+    ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f,true);
     
     if(render_shapes_Q){
         TPZAnalysis anloc(MixedMesh_coarse,false);
@@ -796,8 +779,6 @@ void HDivTestOne(int nx, int order_small, int order_high, bool condense_equation
         
         an_c->Solve();
         an_f->Solve();
-        
-        an_c->Rhs().Print("r = ",std::cout,EMathematicaInput);
         
         TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_c, MixedMesh_coarse);
         
