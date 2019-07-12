@@ -103,8 +103,8 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
 //Creates index vector
 void IndexVectorCoFi(TPZMultiphysicsCompMesh *Coarse_sol, TPZMultiphysicsCompMesh *Fine_sol, TPZVec<int64_t> & indexvec);
 
-//Test for the HDiv case
-void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equations_Q);
+//Test for the HDiv 1D and 2D cases
+void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equations_Q, int dimen);
 
 //Test for the HDiv case One Dimension
 void HDivTestOne(int nx, int order_small, int order_high, bool condense_equations_Q);
@@ -123,8 +123,8 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-//    HDivTest(4, 4, 1, 4, false);
-    HDivTestOne(50, 1, 2, true);
+    HDivTest(4, 4, 1, 4, false, 3);
+//    HDivTestOne(50, 1, 2, true);
 }
 
 /**
@@ -133,9 +133,15 @@ int main(){
  * @param ny: number of partions on y
  * @param order_small: for the low order mesh
  * @param order_high: for the high order mesh
+ * @param condense_equations_Q: true or false wether you want or not condensation
+ * @param dimen: 1 or 2 dimension problem
  * @return Two computational meshes with different orders
  */
-void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equations_Q){
+void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equations_Q, int dimen){
+    
+    if (dimen!=1 || dimen !=2) {
+        DebugStop();
+    }
     
     // Created condensed elements for the elements that have internal nodes
     bool KeepOneLagrangian = false;
@@ -144,6 +150,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equ
     
     
     //Generating low order mesh
+    
     TPZGeoMesh *gmesh = GenerateGmesh(nx, ny, 1, 1);
     TPZMultiphysicsCompMesh *MixedMesh_coarse = 0;
     TPZManVector<TPZCompMesh *> vecmesh_c(4); //vecmesh: Stands for vector coarse mesh
@@ -325,7 +332,7 @@ void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must
         
     }else{
         
-        TPZSkylineStructMatrix sparse_matrix_coarse(cmesh_c);
+        TPZSkylineStructMatrix sparse_matrix_coarse(cmesh_c);           //Problems with the
         TPZSkylineStructMatrix sparse_matrix_fine(cmesh_f);
         sparse_matrix_coarse.SetNumThreads(number_threads);
         sparse_matrix_fine.SetNumThreads(number_threads);
