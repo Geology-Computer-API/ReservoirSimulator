@@ -70,7 +70,7 @@
 #include "TPZCompMeshTools.h"
 #include "TPZMixedDarcyWithFourSpaces.h"
 #include "pzcmesh.h"
-
+#include "pzbdstrmatrix.h"
 
 #ifdef _AUTODIFF
 #include "tfad.h"
@@ -123,8 +123,8 @@ int main(){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-//    HDivTest(4, 4, 1, 4, false);
-    HDivTestOne(50, 1, 2, true);
+    HDivTest(2, 2, 1, 2, true);
+//    HDivTestOne(50, 1, 2, true);
 }
 
 /**
@@ -231,7 +231,7 @@ void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equ
     }
     
     // Solving and postprocessing problems separately
-    if(1){
+    if(0){
         
         an_c->Assemble();
         an_f->Assemble();
@@ -271,12 +271,42 @@ void HDivTest(int nx, int ny, int order_small, int order_high, bool condense_equ
     
     /// An iterative solution
     {
+        
+        // constructing block diagonal.
+        {
+            TPZBlockDiagonalStructMatrix bdstr(MixedMesh_fine);
+            TPZBlockDiagonal<STATE> * sp = new TPZBlockDiagonal<STATE>();
+            bdstr.AssembleBlockDiagonal(*sp);
+
+            
+            int64_t n_con = MixedMesh_fine->NConnects();
+            for (int ic = 0; ic < n_con; ic++) {
+                TPZConnect & con = MixedMesh_fine->ConnectVec()[ic];
+                bool check = con.IsCondensed() || con.HasDependency() || con.LagrangeMultiplier() ==0;
+                if (check) {
+                    continue;
+                }
+                
+                int64_t seqnum = con.SequenceNumber();
+                int nblock = MixedMesh_fine->Block().Size(seqnum);
+                if (nblock!=1) {
+                    DebugStop();
+                }
+                
+                int64_t pos = MixedMesh_fine->Block().Position(seqnum);
+                (*sp).PutVal(pos, pos, 1.0);
+                
+            }
+            std::ofstream file("matblock.nb");
+            sp->Print("k = ",file,EMathematicaInput);
+        }
+        
         // Resolver coarse
         an_c->Assemble();
         
         // Resolver coarse
         an_c->Solve();
-        an_c->Solution().Print("xc = ",std::cout,EMathematicaInput);
+//        an_c->Solution().Print("xc = ",std::cout,EMathematicaInput);
         
 //        // Transfer the solution
 //        TPZVec<int64_t> indexvec;
