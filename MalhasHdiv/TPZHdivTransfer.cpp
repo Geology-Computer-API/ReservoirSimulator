@@ -33,20 +33,32 @@ void TPZHdivTransfer<TVar>::Print(const char *name = NULL, std::ostream &out = s
     DebugStop();
 }
 
+/**
+ * @brief Gather a vector
+ * @param y: Compressed vector which stores the information of the full vector
+ * @param x: Vector which is going to provide the values for x
+ */
 template<class TVar>
 void TPZHdivTransfer<TVar>::Gather(TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &x){
     DebugStop();
 }
 
+/**
+ * @brief Scatter a vector
+ * @param y: Full vector which stores the information of the compressed vector
+ * @param x: Vector which is going to provide the values for y
+ */
 template<class TVar>
 void TPZHdivTransfer<TVar>::Scatter(TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &x){
     DebugStop();
 }
 
+
 template<class TVar>
 void TPZHdivTransfer<TVar>::SetIndexes(TPZVec<int64_t> &Indexes){
     fIndexes = Indexes;
 }
+
 
 template<class TVar>
 TPZVec<int64_t> & TPZHdivTransfer<TVar>::GetIndexes(){
