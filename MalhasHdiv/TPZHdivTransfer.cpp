@@ -42,3 +42,13 @@ template<class TVar>
 void TPZHdivTransfer<TVar>::Scatter(TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &x){
     DebugStop();
 }
+
+template<class TVar>
+void TPZHdivTransfer<TVar>::SetIndexes(TPZVec<int64_t> &Indexes){
+    fIndexes = Indexes;
+}
+
+template<class TVar>
+TPZVec<int64_t> & TPZHdivTransfer<TVar>::GetIndexes(){
+    return fIndexes;
+}

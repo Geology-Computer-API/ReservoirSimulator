@@ -40,6 +40,12 @@ public:
     /** @brief Scatter y elements into x vector */
     void Scatter(TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &x);
     
+    /** @brief Set indexes */
+    void SetIndexes(TPZVec<int64_t> &Indexes);
+    
+    /** @brief Get indexes */
+    TPZVec<int64_t> & GetIndexes();
+    
 };
 
 #endif /* TPZHdivTransfer_h */
