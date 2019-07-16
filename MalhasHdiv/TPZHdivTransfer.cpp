@@ -103,7 +103,7 @@ void TPZHdivTransfer<TVar>::MultAdd(const TPZFMatrix<TVar> &x, const TPZFMatrix<
                 for ( r = 0; r < rows; r++ ) {
                     val = z(r,ic) + alpha * GetVal(r,c) * x.GetVal(c,ic);
                 }
-                val+=y.GetVal(r,ic);
+                val+= beta * y.GetVal(r,ic);
                 z.PutVal(r,ic,val);
             }
         } else {
@@ -112,7 +112,7 @@ void TPZHdivTransfer<TVar>::MultAdd(const TPZFMatrix<TVar> &x, const TPZFMatrix<
                 for(c = 0; c<cols; c++) {
                     val += GetVal(c,r)* x.GetVal(c,ic);
                 }
-                val+=y.GetVal(r,ic);
+                val+= beta * y.GetVal(r,ic);
                 z.PutVal(r,ic,alpha*val);
             }
         }
