@@ -10,17 +10,15 @@
 
 template<class TVar>
 TPZHdivTransfer<TVar>::TPZHdivTransfer() : TPZMatrix<TVar>() {
-    DebugStop();
 }
 
 
 template<class TVar>
-TPZHdivTransfer<TVar>::TPZHdivTransfer(const TPZHdivTransfer<TVar> &cp) : TPZMatrix<TVar>(cp){
-    DebugStop();
+TPZHdivTransfer<TVar>::TPZHdivTransfer(const TPZHdivTransfer<TVar> &cp) : TPZMatrix<TVar>(cp) : fIndexes(cp.fIndexes) {
 }
 
 template<class TVar>
-TPZHdivTransfer<TVar>::TPZHdivTransfer(TPZVec<int64_t> &Indexes) : TPZMatrix<TVar>() {
+TPZHdivTransfer<TVar>::TPZHdivTransfer(int64_t rows, int64_t cols, TPZVec<int64_t> &Indexes) : TPZMatrix<TVar>(rows, cols) {
     fIndexes = Indexes;
 }
 
@@ -55,12 +53,68 @@ void TPZHdivTransfer<TVar>::Scatter(TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &x){
 
 
 template<class TVar>
-void TPZHdivTransfer<TVar>::SetIndexes(TPZVec<int64_t> &Indexes){
+void TPZHdivTransfer<TVar>::SetIndexes(int64_t rows, int64_t cols, TPZVec<int64_t> &Indexes){
+    TPZMatrix::SetDimension
     fIndexes = Indexes;
+    int64_t r = Indexes.size();
+    if (r > rows) {
+        DebugStop();
+    }
+    
 }
 
 
 template<class TVar>
 TPZVec<int64_t> & TPZHdivTransfer<TVar>::GetIndexes(){
     return fIndexes;
+}
+
+/**
+ * @brief It computes z = beta * y + alpha * opt(this)*x but z and x can not overlap in memory.
+ * @param x Is x on the above operation
+ * @param y Is y on the above operation
+ * @param z Is z on the above operation
+ * @param alpha Is alpha on the above operation
+ * @param beta Is beta on the above operation
+ * @param opt Indicates if is Transpose or not
+ */
+template<class TVar>
+void TPZHdivTransfer<TVar>::MultAdd(const TPZFMatrix<TVar> &x, const TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &z, const TVar alpha, const TVar beta, const int opt) const {
+    
+    if (y.Cols() != x.Cols() || y.Rows() != x.Rows() || y.Cols() != z.Cols() || y.Rows() != z.Cols()) {
+        DebugStop();
+    }
+    if (!opt && Cols() != x.Rows() || Rows() != x.Rows()) {
+        DebugStop();
+    }
+    int64_t rows = Rows();
+    int64_t cols = Cols();
+    int64_t xcols = x.Cols();
+    int64_t ic;
+    int64_t c;
+    int64_t r;
+    
+    PrepareZ (y,z,beta,opt);
+    TVar val = 0.;
+    
+    for (ic = 0; ic < xcols; ic++) {
+        if(!opt) {
+            for ( c = 0; c<cols; c++) {
+                for ( r = 0; r < rows; r++ ) {
+                    val = z(r,ic) + alpha * GetVal(r,c) * x.GetVal(c,ic);
+                }
+                val+=y.GetVal(r,ic);
+                z.PutVal(r,ic,val);
+            }
+        } else {
+            for (r = 0; r<rows; r++) {
+                val = 0.;
+                for(c = 0; c<cols; c++) {
+                    val += GetVal(c,r)* x.GetVal(c,ic);
+                }
+                val+=y.GetVal(r,ic);
+                z.PutVal(r,ic,alpha*val);
+            }
+        }
+    }
 }

@@ -119,7 +119,7 @@ int main(){
 #endif
     
     
-    HDiv(100, 1, 2, false, false);
+    HDiv(10, 1, 2, false, true);
 
     
     
@@ -700,7 +700,6 @@ TPZGeoMesh * GenerateGmeshOne(int nx, double l){
 //    gmesh->NodeVec().NElements();
     for (int64_t i=0; i<nx+1; i++) {
         xp[0] =(i)*h;
-            cout << xp<<endl;
         gmesh->NodeVec()[i]= TPZGeoNode(i, xp, *gmesh);
     }
 
