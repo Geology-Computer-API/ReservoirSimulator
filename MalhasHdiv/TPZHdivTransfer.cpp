@@ -14,7 +14,7 @@ TPZHdivTransfer<TVar>::TPZHdivTransfer() : TPZMatrix<TVar>() {
 
 
 template<class TVar>
-TPZHdivTransfer<TVar>::TPZHdivTransfer(const TPZHdivTransfer<TVar> &cp) : TPZMatrix<TVar>(cp) : fIndexes(cp.fIndexes) {
+TPZHdivTransfer<TVar>::TPZHdivTransfer(const TPZHdivTransfer<TVar> &cp) : TPZMatrix<TVar>(cp), fIndexes(cp.fIndexes) {
 }
 
 template<class TVar>
@@ -22,12 +22,13 @@ TPZHdivTransfer<TVar>::TPZHdivTransfer(int64_t rows, int64_t cols, TPZVec<int64_
     fIndexes = Indexes;
 }
 
-~TPZHdivTransfer(){
+template<class TVar>
+TPZHdivTransfer<TVar>::~TPZHdivTransfer(){
     
 }
 
 template<class TVar>
-void TPZHdivTransfer<TVar>::Print(const char *name = NULL, std::ostream &out = std::cout , const MatrixOutputFormat form = EFormatted) const {
+void TPZHdivTransfer<TVar>::Print(const char *name, std::ostream &out , const MatrixOutputFormat form) const {
     DebugStop();
 }
 
@@ -54,10 +55,10 @@ void TPZHdivTransfer<TVar>::Scatter(TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &x){
 
 template<class TVar>
 void TPZHdivTransfer<TVar>::SetIndexes(int64_t rows, int64_t cols, TPZVec<int64_t> &Indexes){
-    TPZMatrix::SetDimension
+    TPZMatrix<TVar>::Resize(rows, cols);
     fIndexes = Indexes;
     int64_t r = Indexes.size();
-    if (r > rows) {
+    if (r != rows) {
         DebugStop();
     }
     
@@ -81,40 +82,34 @@ TPZVec<int64_t> & TPZHdivTransfer<TVar>::GetIndexes(){
 template<class TVar>
 void TPZHdivTransfer<TVar>::MultAdd(const TPZFMatrix<TVar> &x, const TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &z, const TVar alpha, const TVar beta, const int opt) const {
     
-    if (y.Cols() != x.Cols() || y.Rows() != x.Rows() || y.Cols() != z.Cols() || y.Rows() != z.Cols()) {
+    if (opt==0 && (y.Cols() != x.Cols() || y.Rows() != this->Rows() || y.Cols() != z.Cols() || y.Rows() != z.Rows())) {
         DebugStop();
     }
-    if (!opt && Cols() != x.Rows() || Rows() != x.Rows()) {
+    if (opt && (y.Cols() != x.Cols() || y.Rows() != this->Cols() || y.Cols() != z.Cols() || y.Rows() != z.Rows())) {
         DebugStop();
     }
-    int64_t rows = Rows();
-    int64_t cols = Cols();
+    int64_t rows = this->Rows();
     int64_t xcols = x.Cols();
-    int64_t ic;
-    int64_t c;
-    int64_t r;
     
-    PrepareZ (y,z,beta,opt);
+    TPZMatrix<TVar>::PrepareZ (y,z,beta,opt);
     TVar val = 0.;
-    
-    for (ic = 0; ic < xcols; ic++) {
-        if(!opt) {
-            for ( c = 0; c<cols; c++) {
-                for ( r = 0; r < rows; r++ ) {
-                    val = z(r,ic) + alpha * GetVal(r,c) * x.GetVal(c,ic);
-                }
-                val+= beta * y.GetVal(r,ic);
-                z.PutVal(r,ic,val);
+
+    if(opt == 0)
+    {
+        for (int64_t i = 0; i<rows; i++) {
+            for (int64_t j = 0; j<xcols; j++) {
+                z(i,j) += alpha*x.GetVal(fIndexes[i],j);
             }
-        } else {
-            for (r = 0; r<rows; r++) {
-                val = 0.;
-                for(c = 0; c<cols; c++) {
-                    val += GetVal(c,r)* x.GetVal(c,ic);
-                }
-                val+= beta * y.GetVal(r,ic);
-                z.PutVal(r,ic,alpha*val);
+        }
+    }
+    else
+    {
+        for (int64_t i = 0; i<rows; i++) {
+            for (int64_t j = 0; j<xcols; j++) {
+                z(fIndexes[i],j) += alpha*x.GetVal(i,j);
             }
         }
     }
 }
+
+template class TPZHdivTransfer<double>;

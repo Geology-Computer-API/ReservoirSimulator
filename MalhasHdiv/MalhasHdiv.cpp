@@ -72,6 +72,10 @@
 #include "pzcmesh.h"
 #include "pzbdstrmatrix.h"
 
+#include "TPZHdivTransfer.h"
+#include "pzseqsolver.h"
+#include "pzmgsolver.h"
+
 #ifdef _AUTODIFF
 #include "tfad.h"
 #include "fad.h"
@@ -119,7 +123,7 @@ int main(){
 #endif
     
     
-    HDiv(10, 1, 2, false, true);
+    HDiv(10, 1, 2, true, true);
 
     
     
@@ -235,7 +239,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     }
     
     // Solving and postprocessing problems separately
-    if(1){
+    if(0){
         
         an_c->Assemble();
         an_f->Assemble();
@@ -281,14 +285,20 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         an_f->PostProcess(0,di);
     }
     
+    // Resolver coarse
+    an_c->Assemble();
+
+    an_f->Assemble();
     // An iterative solution
     {
         
         // constructing block diagonal.
-        if(0){
+        if(1){
             TPZBlockDiagonalStructMatrix bdstr(MixedMesh_fine);
             TPZBlockDiagonal<STATE> * sp = new TPZBlockDiagonal<STATE>();
             bdstr.AssembleBlockDiagonal(*sp);
+            
+            TPZAutoPointer<TPZMatrix<STATE> > sp_auto(sp);
             
             
             int64_t n_con = MixedMesh_fine->NConnects();
@@ -300,27 +310,57 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
                 }
                 
                 int64_t seqnum = con.SequenceNumber();
-                int nblock = MixedMesh_fine->Block().Size(seqnum);
-                if (nblock!=1) {
-                    DebugStop();
+                int block_size = MixedMesh_fine->Block().Size(seqnum);
+                if (block_size != 1) {
+                    continue;
                 }
                 
                 int64_t pos = MixedMesh_fine->Block().Position(seqnum);
                 (*sp).PutVal(pos, pos, 1.0);
-                
             }
-            std::ofstream file("matblock.nb");
-            sp->Print("k = ",file,EMathematicaInput);
+                
+                
+            TPZVec<int64_t> Indexes;
+            IndexVectorCoFi(MixedMesh_coarse, MixedMesh_fine, Indexes);
+            int64_t neq_coarse = MixedMesh_coarse->NEquations();
+            int64_t neq_fine = MixedMesh_fine->NEquations();
+            TPZHdivTransfer<STATE> *transfer = new TPZHdivTransfer<STATE>(neq_coarse, neq_fine, Indexes);
+            TPZFMatrix<STATE> coarsesol(neq_coarse,1,1.), finesol(neq_fine,1,1.);
+            transfer->Multiply(finesol, coarsesol,0);
+            transfer->Multiply(coarsesol, finesol,1);
+            
+            TPZStepSolver<STATE> step;
+            step.SetDirect(ELDLt);
+            an_c->Solver().Solve(coarsesol,coarsesol);
+            TPZMGSolver<STATE> mgsolve(transfer,an_c->Solver(),1);
+            mgsolve.SetMatrix(an_f->Solver().Matrix());
+            mgsolve.Solve(finesol, finesol);
+                
+            TPZStepSolver<STATE> BDSolve(sp_auto);
+            BDSolve.SetDirect(ELU);
+            
+            
+            TPZSequenceSolver<STATE> seqsolver;
+            seqsolver.SetMatrix(an_f->Solver().Matrix());
+            seqsolver.AppendSolver(mgsolve);
+            seqsolver.AppendSolver(BDSolve);
+            seqsolver.AppendSolver(mgsolve);
+            
+            seqsolver.Solve(finesol, finesol);
+//            std::ofstream file("matblock.nb");
+//            sp->Print("k = ",file,EMathematicaInput);
+            TPZStepSolver<STATE> cg_solve(an_f->Solver().Matrix());
+            cg_solve.SetCG(10, seqsolver, 1.e-6, 0);
+            
         }
         
-        // Resolver coarse
-        an_c->Assemble();
         
+
+
         // Resolver coarse
         an_c->Solve();
         
         // Residual
-        an_f->Assemble();
 //        an_f->Rhs().Print("r = ",std::cout,EMathematicaInput);
         an_f->Solve();
 //        an_f->Solution().Print("xf = ",std::cout,EMathematicaInput);

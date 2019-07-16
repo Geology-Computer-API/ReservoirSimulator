@@ -25,6 +25,8 @@ public:
     /** @brief Copy constructor */
     TPZHdivTransfer(const TPZHdivTransfer<TVar> &cp);
     
+    CLONEDEF(TPZHdivTransfer<TVar>)
+    
     /** @brief Constructor based on indexes */
     TPZHdivTransfer(int64_t rows, int64_t cols, TPZVec<int64_t> &Indexes);
     
