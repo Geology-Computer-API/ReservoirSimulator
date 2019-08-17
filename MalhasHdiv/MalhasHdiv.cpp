@@ -103,7 +103,7 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
 //Creates index vector
 void IndexVectorCoFi(TPZMultiphysicsCompMesh *Coarse_sol, TPZMultiphysicsCompMesh *Fine_sol, TPZVec<int64_t> & indexvec);
 
-//Hdiv
+//Hdiv Test
 void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bool two_d_Q);
 
 
@@ -115,6 +115,8 @@ void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must
 
 
 using namespace std;
+
+
 
 int main(){
     
@@ -130,7 +132,7 @@ int main(){
 }
 
 /**
- * @brief Runs a HDiv problem with 4 spaces for 1D or 2D cases
+ * @brief Runs a HDiv problem with 4 spaces for 1D or 2D case
  * @param order_small: Low order for internal elements
  * @param order_high: High order for border elements
  * @param condense_equations_Q: Bool wether the problem is condensed or not
@@ -167,7 +169,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         vecmesh_c[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_c[3] = pavg_cmesh;           //Average pressure
         
-        MixedMesh_coarse = GenerateMixedCmesh(vecmesh_c, 1, two_d_Q);
+        MixedMesh_coarse = GenerateMixedCmesh(vecmesh_c, 1, two_d_Q);       //1 Stands for the corse mesh order
     }
     
     if (condense_equations_Q) {             //Asks if you want to condesate the problem
@@ -200,7 +202,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         vecmesh_f[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_f[3] = pavg_cmesh;           //Average pressure
         
-        MixedMesh_fine = GenerateMixedCmesh(vecmesh_f, 2, two_d_Q);
+        MixedMesh_fine = GenerateMixedCmesh(vecmesh_f, 2, two_d_Q);;       //2 Stands for the corse mesh order
     }
     
     
@@ -224,11 +226,11 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     }
     
     //Solving the system:
-    MixedMesh_coarse->InitializeBlock();
-    MixedMesh_fine->InitializeBlock();
+    MixedMesh_coarse->InitializeBlock();        //Resequence the block object, remove unconnected connect objects
+    MixedMesh_fine->InitializeBlock();          //and reset the dimension of the solution vector
     TPZAnalysis *an_c = new TPZAnalysis;
     TPZAnalysis *an_f = new TPZAnalysis;
-    ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f, true);
+    ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f, true); //True to use pardiso
     
     if(render_shapes_Q){
         TPZAnalysis anloc(MixedMesh_coarse,false);
@@ -294,7 +296,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         
         // constructing block diagonal.
         if(1){
-            TPZBlockDiagonalStructMatrix bdstr(MixedMesh_fine);
+            TPZBlockDiagonalStructMatrix bdstr(MixedMesh_fine);     //Give the fine mesh
             TPZBlockDiagonal<STATE> * sp = new TPZBlockDiagonal<STATE>();
             bdstr.AssembleBlockDiagonal(*sp);
             
@@ -763,6 +765,16 @@ TPZGeoMesh * GenerateGmeshOne(int nx, double l){
     return gmesh;
 }
 
+/**
+ * @brief Configurate the matrix for analysis
+ * @param cmesh_c: Computational coarse mesh
+ * @param cmesh_f: Computational fine mesh
+ * @param must_opt_band_width_Q: Wether the band width is optimized or not (it is neccesaty to rearrange the matrix in order to be less sparse)
+ * @param number_threads: 
+ * @param an_c: Coarse analysis mesh
+ * @param an_f: Fine analysis mesh
+ * @param UsePardiso_Q: Wether using Pardiso or not
+ */
 void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must_opt_band_width_Q, int number_threads, TPZAnalysis *an_c,TPZAnalysis *an_f, bool UsePardiso_Q){
     
         an_c->SetCompMesh(cmesh_c,must_opt_band_width_Q);
