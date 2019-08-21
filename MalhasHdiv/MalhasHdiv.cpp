@@ -112,8 +112,8 @@ void TransferDegreeOfFreedom(TPZFMatrix<STATE> & CoarseDoF, TPZFMatrix<STATE> & 
 
 //Analysis configuration
 void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must_opt_band_width_Q, int number_threads, TPZAnalysis *an_c,TPZAnalysis *an_f, bool UsePardiso_Q);
-
-
+void SplitConnects(TPZCompMesh *fluxmesh, TPZGeoEl *gel ,int j);
+void ShowShape(TPZCompMesh * cmesh, int element, int funcion,std::string plotname);
 using namespace std;
 
 
@@ -125,7 +125,7 @@ int main(){
 #endif
     
     
-    HDiv(10, 1, 2, true, true);
+    HDiv(2, 1, 1, true, false);
 
     
     
@@ -139,7 +139,21 @@ int main(){
  * @param two_d_Q: Bool wether the problem es 1D (false) or 2D (true)
  */
 void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bool two_d_Q){
+   
+    TPZGeoMesh *gmesh_11 = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
+    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_11, 1, 1);
     
+    int el_index=3;
+    int nfun=flux->Element(el_index)->NEquations();
+    for (int i=0; i<nfun; i++) {
+    
+        std::string filename("elementFunc.vtk");
+        std::string file(filename+std::to_string(i)+".vtk");
+        ShowShape(flux,el_index,i,file);
+        
+       
+    }
+
     bool KeepOneLagrangian = false;
     bool KeepMatrix = false;
     bool render_shapes_Q = false;                      //Prints a VTK showing the render shapes
@@ -148,7 +162,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     
     TPZGeoMesh *gmesh;
     
-    TPZGeoMesh *gmesh_1 = GenerateGmesh(nx, nx, 1, 1);      // Generates a 2D geo mesh
+    TPZGeoMesh *gmesh_1 = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
     TPZGeoMesh *gmesh_2 = GenerateGmeshOne(nx, 1);          // Generates a 1D geo mesh
     
     if (two_d_Q) {                  //Asks if the problem is 2D
@@ -171,6 +185,11 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         
         MixedMesh_coarse = GenerateMixedCmesh(vecmesh_c, 1, two_d_Q);       //1 Stands for the corse mesh order
     }
+    
+    //
+   
+    //
+    
     
     if (condense_equations_Q) {             //Asks if you want to condesate the problem
         MixedMesh_coarse->ComputeNodElCon();
@@ -232,13 +251,23 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     TPZAnalysis *an_f = new TPZAnalysis;
     ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f, true); //True to use pardiso
     
-    if(render_shapes_Q){
-        TPZAnalysis anloc(MixedMesh_coarse,false);
-        std::string filename("Shape.vtk");
-        TPZVec<int64_t> indices(20);
-        for(int i=0; i<20; i++) indices[i] = i;
-        anloc.ShowShape(filename, indices,1,"Flux");
-    }
+   
+   
+    
+    std::ofstream salida("MalhaCoarse.txt");
+    flux->Print(salida);
+    
+    
+//    if(render_shapes_Q){
+//        TPZAnalysis anloc(MixedMesh_coarse,false);
+//        std::string filename("Shape.vtk");
+//        TPZVec<int64_t> indices(20);
+//        for(int i=0; i<20; i++) indices[i] = i;
+//        const TPZVec<std::string> varname(1);
+//        varname[0]="Flux";
+//anloc.ShowShape(filename, indices,1,varname);
+//
+//    }
     
     // Solving and postprocessing problems separately
     if(0){
@@ -514,31 +543,33 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
     Cmesh->InsertMaterialObject(mat);
     
     //Create H(div) functions
+ 
     Cmesh->SetAllCreateFunctionsHDiv();
     
-    //Insert boundary conditions
-    int D=0;
-    int BC1=-1;
-    TPZFMatrix<STATE> val1(1,1,0.0);
-    TPZFMatrix<STATE> val2(1,1,0.0);
-    TPZMaterial *bc1 = mat->CreateBC(mat, BC1, D, val1, val2);
-    Cmesh->InsertMaterialObject(bc1);
+//    //Insert boundary conditions
+//    int D=0;
+//    int BC1=-1;
+//    TPZFMatrix<STATE> val1(1,1,0.0);
+//    TPZFMatrix<STATE> val2(1,1,0.0);
+//    TPZMaterial *bc1 = mat->CreateBC(mat, BC1, D, val1, val2);
+//    Cmesh->InsertMaterialObject(bc1);
+//
+//    int BC2=-2;
+//    val2(0,0)=0;
+//    TPZMaterial *bc2 = mat->CreateBC(mat, BC2, D, val1, val2);
+//    Cmesh->InsertMaterialObject(bc2);
+//
+//    int BC3=-3;
+//    val2(0,0)=0;
+//    TPZMaterial *bc3 = mat->CreateBC(mat, BC3, D, val1, val2);
+//    Cmesh->InsertMaterialObject(bc3);
+//
+//    int BC4=-4;
+//    val2(0,0)=0;
+//    TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
+//    Cmesh->InsertMaterialObject(bc4);
     
-    int BC2=-2;
-    val2(0,0)=0;
-    TPZMaterial *bc2 = mat->CreateBC(mat, BC2, D, val1, val2);
-    Cmesh->InsertMaterialObject(bc2);
-    
-    int BC3=-3;
-    val2(0,0)=0;
-    TPZMaterial *bc3 = mat->CreateBC(mat, BC3, D, val1, val2);
-    Cmesh->InsertMaterialObject(bc3);
 
-    int BC4=-4;
-    val2(0,0)=0;
-    TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
-    Cmesh->InsertMaterialObject(bc4);
-    
     Cmesh->AutoBuild();
     
     int64_t nel = Cmesh->NElements();
@@ -803,3 +834,180 @@ void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must
         an_c->SetSolver(step);
         an_f->SetSolver(step);
     }
+void ShowShape(TPZCompMesh * cmesh, int element, int funcion,std::string plotfile){
+    TPZGeoMesh *gmesh = cmesh->Reference();
+    gmesh->ResetReference();
+    
+    int nels = cmesh->NElements();
+    for (int iel =0 ; iel<nels; iel++) {
+        TPZCompEl *cel = cmesh->Element(iel);
+        TPZGeoEl *gel = cel->Reference();
+        if (gel->Index() == element) {
+            gel->SetMaterialId(100);
+        }
+    }
+    
+    TPZMaterial  * mat_2(cmesh->MaterialVec()[1]);
+    std::map<int, TPZMaterial *> matvec;
+    mat_2->Clone(matvec);
+    cmesh->CleanUp();
+ 
+    TPZMatPoisson3d *mat = new TPZMatPoisson3d(100 , 2);
+    TPZMaterial *perf_mat( matvec[1]);
+    TPZMatPoisson3d *aux_mat = dynamic_cast<TPZMatPoisson3d *>(perf_mat);
+    
+    cmesh->InsertMaterialObject(mat);
+    cmesh->AutoBuild();
+  
+    int gdl = cmesh->Solution().Rows();
+    int nfuncols = cmesh->Solution().Cols();
+    int nfunrows = cmesh->Solution().Rows();
+    TPZFMatrix<STATE> solu(nfunrows,nfuncols,1.0);
+    TPZFMatrix<STATE> sol(gdl,1,0.0);
+  
+    sol.Resize(gdl, 1);
+    int nel = cmesh->NElements();
+    int val =1;
+    for (int i=0; i<nel; i++) {
+        TPZCompEl *cel = cmesh->Element(i);
+        TPZGeoEl *gel =cel->Reference();
+        int index = gel->Index();
+        if (index != element) {
+            continue;
+        }
+
+        int nconnects = cel->NConnects();
+        int acum =0;
+       
+        for(int j=0; j<nconnects; j++){
+            int sec_number = cel->Connect(j).fSequenceNumber;
+            if(sec_number > -1)
+            {
+                acum = acum + cmesh->Block().Size(sec_number);
+                if (acum > funcion) {
+
+//                    if (val) {
+                    
+                        //SplitConnects(cmesh, gel ,j);
+//                        cmesh->CleanUp();
+                        val=0;
+                        
+                        int delta = funcion + cmesh->Block().Size(sec_number) - acum;
+                        int64_t pos = cmesh->Block().Position(sec_number);
+                        pos = pos +  delta;
+                        sol.Zero();
+                        sol(pos,0)=1.0;
+                        cmesh->LoadSolution(sol);
+//                        if (funcion == 2) {
+//                            sol.Print(std::cout);
+//                        }
+                        TPZAnalysis *an = new TPZAnalysis(cmesh,false);
+                        {
+                            const int dim = an->Mesh()->Dimension();
+                            int div = 5;
+                            // std::string plotfile = "SHAPES.vtk";
+                            TPZStack<std::string> scalar_names, vec_names;
+                            
+                            scalar_names.push_back("Solution");
+                            an->DefineGraphMesh(dim,scalar_names,vec_names,plotfile);
+                            an->PostProcess(div,dim);
+                            std::cout << "The function :"<<funcion<<" of element "<<element<<" has been printed on .vtk file" << std::endl;
+                            
+                        }
+                        int nelss = gmesh->NElements();
+                        for (int iel =0 ; iel<nelss; iel++) {
+                            TPZGeoEl *gel = gmesh->Element(iel);
+                            if (gel->Index() == element) {
+                                gel->SetMaterialId(1);
+                            }
+//                        }
+                        cmesh->CleanUp();
+                        cmesh->InsertMaterialObject(aux_mat);
+                        cmesh->AutoBuild();
+                        
+                        return;
+
+                    }
+                }
+            }
+        }
+    }
+    
+    //
+    
+}
+void SplitConnects(TPZCompMesh *fluxmesh, TPZGeoEl *gel , int j){
+    //j -> connect index
+    TPZCompEl *cel = gel->Reference();
+    
+    int nelconnect = cel->Connect(j).NElConnected();
+    if (nelconnect>1) {
+        
+    }
+   
+  
+//    for (int iside=4; iside<cel->Reference()->NSides()-1; iside++) {
+        int iside = j + 4;
+    if (iside >= gel->NSides()-1) {
+        return;
+    }
+        TPZGeoElSide neighb(gel, iside);
+        TPZStack<TPZGeoElSide> allneigh;
+        TPZGeoElSide neig = neighb.Neighbour();
+        if (neig.Element()->Dimension() !=2) {
+            return;
+        }
+    
+        TPZCompElSide left(cel,iside);
+        
+     //   TPZGeoEl *gel = left.Element()->Reference();
+        TPZGeoElSide gelr = gel->Neighbour(iside);
+        TPZCompElSide right(gelr.Element()->Reference(), gelr.Side());
+        
+        //TPZCompMesh *pressuremesh = meshvec[1];
+        //TPZGeoMesh *gmesh = fluxmesh->Reference();
+        TPZGeoElSide gleft(gel,iside);
+        TPZGeoElSide gright(gleft.Neighbour());
+        TPZInterpolatedElement *intelleft = dynamic_cast<TPZInterpolatedElement *> (left.Element());
+        TPZInterpolatedElement *intelright = dynamic_cast<TPZInterpolatedElement *> (right.Element());
+        intelleft->SetSideOrient(left.Side(), 1);
+        intelright->SetSideOrient(right.Side(), 1);
+        TPZStack<TPZCompElSide> equalright;
+        TPZConnect &cleft = intelleft->SideConnect(0, left.Side());
+        int conr = right.Element()->Connect(right.Side()-4).SequenceNumber();
+       int conl = left.Element()->Connect(left.Side()-4).SequenceNumber();
+    
+    if (conr != conl) {
+        return;
+    }
+    
+        
+        int64_t index = fluxmesh->AllocateNewConnect(cleft);
+        TPZConnect &newcon = fluxmesh->ConnectVec()[index];
+        cleft.DecrementElConnected();
+        newcon.ResetElConnected();
+        newcon.IncrementElConnected();
+        newcon.SetSequenceNumber(fluxmesh->NConnects() - 1);
+        
+        int rightlocindex = intelright->SideConnectLocId(0, right.Side());
+        intelright->SetConnectIndex(rightlocindex, index);
+        
+        int sideorder = cleft.Order();
+        fluxmesh->SetDefaultOrder(sideorder);
+        
+        int gdl = fluxmesh->Solution().Rows();
+        fluxmesh->Solution().Resize(gdl+2, 1);
+        TPZFMatrix<STATE> sol(gdl+2,1,0.0);
+        fluxmesh->LoadSolution(sol);
+    
+//    }
+    
+    
+    
+    
+//    std::string filename("elementFunc_new.vtk");
+//    std::string file(filename+std::to_string(i)+".vtk");
+//    std::ofstream filename5(filename+std::to_string(i)+".txt");
+//    fluxmesh->Print(filename5);
+    return;
+}
