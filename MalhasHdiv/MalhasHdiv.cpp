@@ -125,7 +125,7 @@ int main(){
 #endif
     
     
-    HDiv(2, 1, 1, true, false);
+    HDiv(5, 1, 4, true, true);
 
     
     
@@ -140,19 +140,19 @@ int main(){
  */
 void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bool two_d_Q){
    
-    TPZGeoMesh *gmesh_11 = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
-    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_11, 1, 1);
-    
-    int el_index=3;
-    int nfun=flux->Element(el_index)->NEquations();
-    for (int i=0; i<nfun; i++) {
-    
-        std::string filename("elementFunc.vtk");
-        std::string file(filename+std::to_string(i)+".vtk");
-        ShowShape(flux,el_index,i,file);
-        
-       
-    }
+//    TPZGeoMesh *gmesh_11 = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
+//    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_11, 1, 1);
+//
+//    int el_index=3;
+//    int nfun=flux->Element(el_index)->NEquations();
+//    for (int i=0; i<nfun; i++) {
+//
+//        std::string filename("elementFunc.vtk");
+//        std::string file(filename+std::to_string(i)+".vtk");
+//        ShowShape(flux,el_index,i,file);
+//
+//
+//    }
 
     bool KeepOneLagrangian = false;
     bool KeepMatrix = false;
@@ -162,7 +162,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     
     TPZGeoMesh *gmesh;
     
-    TPZGeoMesh *gmesh_1 = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
+    TPZGeoMesh *gmesh_1 = GenerateGmesh(nx, nx, 1, 1);      // Generates a 2D geo mesh
     TPZGeoMesh *gmesh_2 = GenerateGmeshOne(nx, 1);          // Generates a 1D geo mesh
     
     if (two_d_Q) {                  //Asks if the problem is 2D
@@ -251,12 +251,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     TPZAnalysis *an_f = new TPZAnalysis;
     ConfigurateAnalyses(MixedMesh_coarse, MixedMesh_fine, must_opt_band_width_Q, number_threads, an_c, an_f, true); //True to use pardiso
     
-   
-   
-    
-    std::ofstream salida("MalhaCoarse.txt");
-    flux->Print(salida);
-    
+
     
 //    if(render_shapes_Q){
 //        TPZAnalysis anloc(MixedMesh_coarse,false);
@@ -270,56 +265,16 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
 //    }
     
     // Solving and postprocessing problems separately
-    if(0){
-        
-        an_c->Assemble();
-        an_f->Assemble();
-        
-        //TPZMixedDarcyWithFourSpaces material is implimented with residuals
-        an_c->Rhs() *= -1.0;
-        an_f->Rhs() *= -1.0;
-        
-        an_c->Solve();
-        an_f->Solve();
-        
-        TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_c, MixedMesh_coarse);
-        
-        //PostProcess
-        TPZStack<std::string> scalar, vectors;
-        TPZManVector<std::string,10> scalnames(4), vecnames(1);
-        vecnames[0]  = "q";
-        scalnames[0] = "p";
-        scalnames[1] = "kappa";
-        scalnames[1] = "div_q";
-        scalnames[2] = "g_average";
-        scalnames[3] = "u_average";
-        
-        std::ofstream filePrint_coarse("MixedHdiv_coarse.txt");
-        MixedMesh_coarse->Print(filePrint_coarse);
-        std::string name_coarse = "MixedHdiv_coarse.vtk";
-        
-        
-        std::ofstream filePrint_fine("MixedHdiv_fine.txt");
-        MixedMesh_fine->Print(filePrint_fine);
-        std::string name_fine = "MixedHdiv_fine.vtk";
-        
-        int di;
-        if (two_d_Q) {
-            di = 2;                 //Dimension definition
-        } else {
-            di = 1;                 //Dimension definition
-        }
-        an_c->DefineGraphMesh(di, scalnames, vecnames, name_coarse);
-        an_c->PostProcess(0,di);
-        
-        an_f->DefineGraphMesh(di, scalnames, vecnames, name_fine);
-        an_f->PostProcess(0,di);
-    }
+  
     
     // Resolver coarse
     an_c->Assemble();
 
     an_f->Assemble();
+    
+    an_c->Solve();
+    
+    an_f->Solve();
     // An iterative solution
     {
         
@@ -328,10 +283,8 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
             TPZBlockDiagonalStructMatrix bdstr(MixedMesh_fine);     //Give the fine mesh
             TPZBlockDiagonal<STATE> * sp = new TPZBlockDiagonal<STATE>();
             bdstr.AssembleBlockDiagonal(*sp);
-            
+
             TPZAutoPointer<TPZMatrix<STATE> > sp_auto(sp);
-            
-            
             int64_t n_con = MixedMesh_fine->NConnects();
             for (int ic = 0; ic < n_con; ic++) {
                 TPZConnect & con = MixedMesh_fine->ConnectVec()[ic];
@@ -339,64 +292,114 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
                 if (check) {
                     continue;
                 }
-                
+
                 int64_t seqnum = con.SequenceNumber();
                 int block_size = MixedMesh_fine->Block().Size(seqnum);
                 if (block_size != 1) {
                     continue;
                 }
-                
+
                 int64_t pos = MixedMesh_fine->Block().Position(seqnum);
                 (*sp).PutVal(pos, pos, 1.0);
             }
-                
-                
+
+            
             TPZVec<int64_t> Indexes;
             IndexVectorCoFi(MixedMesh_coarse, MixedMesh_fine, Indexes);
             int64_t neq_coarse = MixedMesh_coarse->NEquations();
             int64_t neq_fine = MixedMesh_fine->NEquations();
             TPZHdivTransfer<STATE> *transfer = new TPZHdivTransfer<STATE>(neq_coarse, neq_fine, Indexes);
             TPZFMatrix<STATE> coarsesol(neq_coarse,1,1.), finesol(neq_fine,1,1.);
-            transfer->Multiply(finesol, coarsesol,0);
-            transfer->Multiply(coarsesol, finesol,1);
+            transfer->Multiply(finesol, coarsesol,0); //It mutiplies itself by TPZMatrix<TVar>A putting the result in res
+            transfer->Multiply(coarsesol, finesol,1); //z = beta * y(coarse) + alpha * opt(this)*x (fine)
+
+            finesol.Print(std::cout);
+            coarsesol.Print(std::cout);
             
+            
+            //Transfers the solution from coarse to fine mesh
             TPZStepSolver<STATE> step;
             step.SetDirect(ELDLt);
             an_c->Solver().Solve(coarsesol,coarsesol);
+
             TPZMGSolver<STATE> mgsolve(transfer,an_c->Solver(),1);
             mgsolve.SetMatrix(an_f->Solver().Matrix());
             mgsolve.Solve(finesol, finesol);
-                
+            
+            //End of transferation
+            
+            finesol.Print(std::cout);
+            coarsesol.Print(std::cout);
+            
+            //??
+            TPZFMatrix<STATE> rhscoarse = an_c->Rhs();
+            TPZFMatrix<STATE> rhsfine = an_f->Rhs();
+            rhsfine.Print("rhsfine" , std::cout);
             TPZStepSolver<STATE> BDSolve(sp_auto);
             BDSolve.SetDirect(ELU);
-            
-            
             TPZSequenceSolver<STATE> seqsolver;
+
             seqsolver.SetMatrix(an_f->Solver().Matrix());
-            seqsolver.AppendSolver(mgsolve);
+            seqsolver.AppendSolver(mgsolve); //Updates the values of the preconditioner based on the values of the matrix
             seqsolver.AppendSolver(BDSolve);
             seqsolver.AppendSolver(mgsolve);
+            seqsolver.Solve(rhsfine, finesol);
             
-            seqsolver.Solve(finesol, finesol);
-//            std::ofstream file("matblock.nb");
-//            sp->Print("k = ",file,EMathematicaInput);
+            finesol.Print(std::cout);
+            coarsesol.Print(std::cout);
+
+            std::ofstream file("matblock.nb");
+            sp->Print("k = ",file,EMathematicaInput);
             TPZStepSolver<STATE> cg_solve(an_f->Solver().Matrix());
             cg_solve.SetCG(10, seqsolver, 1.e-6, 0);
+            finesol.Zero();
+            cg_solve.Solve(rhsfine, finesol);
+
+
+
+
+        }
+     if(1){
             
+
+          
+            TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_c, MixedMesh_coarse);
+            TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_f, MixedMesh_fine);
+
+            //PostProcess
+            TPZStack<std::string> scalar, vectors;
+            TPZManVector<std::string,10> scalnames(4), vecnames(1);
+            vecnames[0]  = "q";
+            scalnames[0] = "p";
+            scalnames[1] = "kappa";
+            scalnames[1] = "div_q";
+            scalnames[2] = "g_average";
+            scalnames[3] = "u_average";
+            
+            std::ofstream filePrint_coarse("MixedHdiv_coarse.txt");
+            MixedMesh_coarse->Print(filePrint_coarse);
+            std::string name_coarse = "MixedHdiv_coarse.vtk";
+            
+            
+            std::ofstream filePrint_fine("MixedHdiv_fine.txt");
+            MixedMesh_fine->Print(filePrint_fine);
+            std::string name_fine = "MixedHdiv_fine.vtk";
+            
+            int di;
+            if (two_d_Q) {
+                di = 2;                 //Dimension definition
+            } else {
+                di = 1;                 //Dimension definition
+            }
+            an_c->DefineGraphMesh(di, scalnames, vecnames, name_coarse);
+            an_c->PostProcess(3,di);
+           
+            an_f->DefineGraphMesh(di, scalnames, vecnames, name_fine);
+            an_f->PostProcess(3,di);
         }
         
-        
-
-
-        // Resolver coarse
-        an_c->Solve();
-        
-        // Residual
-//        an_f->Rhs().Print("r = ",std::cout,EMathematicaInput);
-        an_f->Solve();
-//        an_f->Solution().Print("xf = ",std::cout,EMathematicaInput);
-        
     }
+    
     
 }
 
@@ -546,28 +549,28 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
  
     Cmesh->SetAllCreateFunctionsHDiv();
     
-//    //Insert boundary conditions
-//    int D=0;
-//    int BC1=-1;
-//    TPZFMatrix<STATE> val1(1,1,0.0);
-//    TPZFMatrix<STATE> val2(1,1,0.0);
-//    TPZMaterial *bc1 = mat->CreateBC(mat, BC1, D, val1, val2);
-//    Cmesh->InsertMaterialObject(bc1);
-//
-//    int BC2=-2;
-//    val2(0,0)=0;
-//    TPZMaterial *bc2 = mat->CreateBC(mat, BC2, D, val1, val2);
-//    Cmesh->InsertMaterialObject(bc2);
-//
-//    int BC3=-3;
-//    val2(0,0)=0;
-//    TPZMaterial *bc3 = mat->CreateBC(mat, BC3, D, val1, val2);
-//    Cmesh->InsertMaterialObject(bc3);
-//
-//    int BC4=-4;
-//    val2(0,0)=0;
-//    TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
-//    Cmesh->InsertMaterialObject(bc4);
+    //Insert boundary conditions
+    int D=0;
+    int BC1=-1;
+    TPZFMatrix<STATE> val1(1,1,0.0);
+    TPZFMatrix<STATE> val2(1,1,0.0);
+    TPZMaterial *bc1 = mat->CreateBC(mat, BC1, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc1);
+
+    int BC2=-2;
+    val2(0,0)=0;
+    TPZMaterial *bc2 = mat->CreateBC(mat, BC2, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc2);
+
+    int BC3=-3;
+    val2(0,0)=0;
+    TPZMaterial *bc3 = mat->CreateBC(mat, BC3, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc3);
+
+    int BC4=-4;
+    val2(0,0)=0;
+    TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc4);
     
 
     Cmesh->AutoBuild();
@@ -690,7 +693,7 @@ void Ladoderecho_2D (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
     
     STATE x = pt[0];
     STATE y = pt[1];
-    double fx= 4*M_PI*M_PI*sin(2*M_PI*x)*sin(2*M_PI*y);        //Force function definition
+    double fx= 2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);        //Force function definition
     disp[0]=fx;
     
 }
