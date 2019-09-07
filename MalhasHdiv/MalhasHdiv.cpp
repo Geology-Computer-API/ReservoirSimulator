@@ -132,7 +132,7 @@ int main(){
     
     TPZTimer clock;
     clock.start();
-    HDiv(15, 1, 4, true, true);
+    HDiv(15, 1, 2, true, true);
     clock.stop();
     std::ofstream Out("TotalTime.txt");
     operator<<(Out, clock );
@@ -258,6 +258,10 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         anloc.ShowShape(filename, indices,1,varname);
 
     }
+    clock3.stop();
+    
+    TPZTimer Solving_coarse_p;
+    Solving_coarse_p.start();
     
     // Resolver coarse
     an_c->Assemble();
@@ -265,8 +269,12 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     
     an_c->Solve();
     an_f->Solve();
+    Solving_coarse_p.stop();
     
-    clock3.stop();
+    std::ofstream Out_Solving_coarse_p("SolvingCoarse.txt");
+    operator<<(Out_Solving_coarse_p, Solving_coarse_p );
+    
+    
     std::ofstream Out3("Analysis.txt");
     operator<<(Out3, clock3 );
     
@@ -349,7 +357,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
 //            std::ofstream file("matblock.nb");
 //            sp->Print("k = ",file,EMathematicaInput);
             TPZStepSolver<STATE> cg_solve(an_f->Solver().Matrix());
-            cg_solve.SetCG(100, seqsolver, 1.e-56, 0);
+            cg_solve.SetCG(100, seqsolver, 1.e-16, 0);
 //            cg_solve.Set(50, 1, seqsolver, 1.e-1, 0);
             finesol.Zero();
             cg_solve.Solve(rhsfine, finesol);
