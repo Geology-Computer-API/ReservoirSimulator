@@ -10,7 +10,7 @@
 #include "pzcmesh.h"
 #include "pzintel.h"
 #include "pzcompel.h"
-#include "TPZHybridizeHDiv.h"
+//#include "TPZHybridizeHDiv.h"
 #include "pzfmatrix.h"
 #include "pzvec.h"
 #include "pzmanvector.h"
@@ -84,29 +84,27 @@
 #endif
 
 
-//Creating geometric 1D and 2D mesh
-TPZGeoMesh * GenerateGmeshOne(int nx, double l);
-TPZGeoMesh * GenerateGmesh(int nx, int ny, double l, double h);
-
-//Stablish de force fuction for 1D and 2D mesh
-void Ladoderecho_1D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
-void Ladoderecho_2D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
-
-//Stablish an exact solution
-void SolExact(const TPZVec<REAL> &ptx, TPZVec<STATE> &sol, TPZFMatrix<STATE> &flux);
+//Creating geometric 1D, 2D and 3D mesh
+TPZGeoMesh * GenerateGmesh1D(int nx, double l);
+TPZGeoMesh * GenerateGmesh2D(int nx, int ny, double l, double h);
+TPZGeoMesh * GenerateGmesh3D(int nx, int ny, int nz, double l, double h, double w);
 
 //Creating computational meshes
 TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order_internal);
 TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh, bool third_LM);
 TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *Gmesh, int order_internal, int order_border);
-TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order, bool two_d_Q);
+TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order, int two_d_Q);
+
+//Stablish de force fuction for 1D and 2D mesh
+void Ladoderecho_1D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
+void Ladoderecho_2D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
+void Ladoderecho_3D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
 
 //Creates index vector
 void IndexVectorCoFi(TPZMultiphysicsCompMesh *Coarse_sol, TPZMultiphysicsCompMesh *Fine_sol, TPZVec<int64_t> & indexvec);
 
 //Hdiv Test
-void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bool two_d_Q);
-
+void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, int dim);
 
 //Transfer DOF from coarse mesh to fine mesh
 void TransferDegreeOfFreedom(TPZFMatrix<STATE> & CoarseDoF, TPZFMatrix<STATE> & FineDoF, TPZVec<int64_t> & DoFIndexes);
@@ -114,13 +112,14 @@ void TransferDegreeOfFreedom(TPZFMatrix<STATE> & CoarseDoF, TPZFMatrix<STATE> & 
 //Analysis configuration
 void ConfigurateAnalyses(TPZCompMesh * cmesh_c, TPZCompMesh * cmesh_f, bool must_opt_band_width_Q, int number_threads, TPZAnalysis *an_c,TPZAnalysis *an_f, bool UsePardiso_Q);
 
+//Stablish an exact solution
+void SolExact(const TPZVec<REAL> &ptx, TPZVec<STATE> &sol, TPZFMatrix<STATE> &flux);
+
 //Split connects from a certain mesh
 void SplitConnects(TPZCompMesh *fluxmesh, TPZGeoEl *gel ,int j);
 
 //Shows shape functions for a certain element
 void ShowShape(TPZCompMesh * cmesh, int element, int funcion,std::string plotname);
-
-void HdiVSimple(int nx, int order_high, bool condense_equations_Q, bool two_d_Q);
 
 
 using namespace std;
@@ -133,25 +132,25 @@ int main(){
     
     TPZTimer clock;
     clock.start();
-    HDiv(15, 1, 2, true, true);
-//    HdiVSimple(30, 2, true, true);
+    
+    HDiv(200, 1, 2, false, 3);
+    
     clock.stop();
     std::ofstream Out("TotalTime.txt");
     operator<<(Out, clock );
 }
 
 /**
- * @brief Runs a HDiv problem with 4 spaces for 1D or 2D case
+ * @brief Runs a HDiv problem with 4 spaces for 1D 2D or 3D case
  * @param order_small: Low order for border elements
  * @param order_high: High order for internal elements
  * @param condense_equations_Q: Bool wether the problem is condensed or not
- * @param two_d_Q: Bool wether the problem es 1D (false) or 2D (true)
+ * @param dim: Dimension of the problem
  */
-void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bool two_d_Q){
+void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, int dim){
     
-//    TPZGeoMesh *gmesh_11 = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
-//    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_11, 1, 1);
-//
+//    TPZGeoMesh *gmesh_1D = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
+//    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_1D, 1, 1);
 //    int el_index=3;
 //    int nfun=flux->Element(el_index)->NEquations();
 //    for (int i=0; i<nfun; i++) {
@@ -163,25 +162,26 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
 
     bool KeepOneLagrangian = false;
     bool KeepMatrix = false;
-    bool render_shapes_Q = false;               //Prints a .VTK showing the render shapes
     bool must_opt_band_width_Q = true;
     int number_threads = 0;
     
     TPZGeoMesh *gmesh;
     
-    // Generates a 2D geo mesh
-    TPZGeoMesh *gmesh_1 = GenerateGmesh(nx, nx, 1, 1);
-    
-    // Generates a 1D geo mesh
-    TPZGeoMesh *gmesh_2 = GenerateGmeshOne(nx, 1);
-    
     //Asks if the problem is 2D
-    if (two_d_Q) {
-        gmesh = gmesh_1;
-    } else {
-        gmesh = gmesh_2;
-    }
+    switch (dim) {
+        case 1:
+            gmesh = GenerateGmesh1D(nx, 1);
 
+            break;
+        case 2:
+            gmesh = GenerateGmesh2D(nx, nx, 1, 1);
+            break;
+        case 3:
+            gmesh = GenerateGmesh3D(nx, nx, nx, 1, 1, 1);
+            break;
+        
+    }
+   
     TPZMultiphysicsCompMesh *MixedMesh_c = 0;
     TPZManVector<TPZCompMesh *> vecmesh_c(4);      //Vector for coarse mesh case (4 spaces)
     {
@@ -194,7 +194,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         vecmesh_c[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_c[3] = pavg_cmesh;           //Average pressure
         
-        MixedMesh_c = GenerateMixedCmesh(vecmesh_c, 1, two_d_Q);       //1 Stands for the corse mesh order
+        MixedMesh_c = GenerateMixedCmesh(vecmesh_c, 1, dim);       //1 Stands for the corse mesh order
     }
     
     if (condense_equations_Q) {             //Asks if you want to condesate the problem
@@ -226,9 +226,8 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
         vecmesh_f[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_f[3] = pavg_cmesh;           //Average pressure
         
-        MixedMesh_f = GenerateMixedCmesh(vecmesh_f, 2, two_d_Q); //2 Stands for the corse mesh order
+        MixedMesh_f = GenerateMixedCmesh(vecmesh_f, 2, dim); //2 Stands for the fine mesh order
     }
-
     
     //Asks if you want to condesate the problem
     if (condense_equations_Q) {
@@ -258,39 +257,67 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
     TPZAnalysis *an_f = new TPZAnalysis;
     //True to use pardiso
     ConfigurateAnalyses(MixedMesh_c, MixedMesh_f, must_opt_band_width_Q, number_threads, an_c, an_f, true);
-    
-    if(render_shapes_Q){
-        TPZAnalysis anloc(MixedMesh_c,false);
-        std::string filename("Shape.vtk");
-        TPZVec<int64_t> indices(20);
-        for(int i=0; i<20; i++) indices[i] = i;
-        const TPZVec<std::string> varname(1);
-        varname[0]="Flux";
-        anloc.ShowShape(filename, indices,1,varname);
-    }
 
+    std::cout<<"------------------------------"<<std::endl;
+    std::cout<<"Analysis configuration done"<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
     
     TPZTimer AssemblyFine;
     AssemblyFine.start();
     
     // Assembly fine operator
     an_f->Assemble();
+    
+//    //
+////    TPZStepSolver<STATE> step2;
+////    step2.SetDirect(ELDLt);
+////    an_f->SetSolver(step2);
+//    an_f->Solve();
+//
+//    //PostProcess
+//    TPZStack<std::string> scalar, vectors;
+//    TPZManVector<std::string,10> scalnames(4), vecnames(1);
+//    vecnames[0]  = "q";
+//    scalnames[0] = "p";
+//    scalnames[1] = "kappa";
+//    scalnames[1] = "div_q";
+//    scalnames[2] = "g_average";
+//    scalnames[3] = "u_average";
+//
+//
+//
+//    std::ofstream filePrint_fine("MixedHdiv_fine.txt");
+//    MixedMesh_f->Print(filePrint_fine);
+//    std::string name_fine = "MixedHdiv_fine.vtk";
+//
+//
+//    an_f->DefineGraphMesh(dim, scalnames, vecnames, name_fine);
+//    an_f->PostProcess(2,dim);
+    
+  
+    //
     AssemblyFine.stop();
     std::ofstream Out_AssemblyFine("Assembly_Fine.txt");
     operator<<(Out_AssemblyFine, AssemblyFine );
+    
+    std::cout<<"------------------------------"<<std::endl;
+    std::cout<<"Assembly Fine"<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
     
     TPZTimer AssemblyAndSolvingCoarse;
     AssemblyAndSolvingCoarse.start();
     
     // Assembly for coarse operator
     an_c->Assemble();
-//    an_c->Solve();      //Sin esto se pierde la solución
     
     AssemblyAndSolvingCoarse.stop();
     
     std::ofstream Out_AssemblyAndSolvingCoarse("Assembly_Coarse.txt");
     operator<<(Out_AssemblyAndSolvingCoarse, AssemblyAndSolvingCoarse );
 
+    std::cout<<"------------------------------"<<std::endl;
+    std::cout<<"Assembly Coarse"<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
     
     // An iterative solution
     {
@@ -329,6 +356,10 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
             TPZTimer clock5;
             clock5.start();
             
+            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"Diagonal block constructed"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
+            
             TPZVec<int64_t> Indexes;
             IndexVectorCoFi(MixedMesh_c, MixedMesh_f, Indexes);
             int64_t neq_coarse = MixedMesh_c->NEquations();
@@ -337,26 +368,26 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
             TPZFMatrix<STATE> coarsesol(neq_coarse,1,1.), finesol(neq_fine,1,1.);
             transfer->Multiply(finesol, coarsesol,0); //It mutiplies itself by TPZMatrix<TVar>A adding the result in res
             transfer->Multiply(coarsesol, finesol,1); //z = beta * y(coarse) + alpha * opt(this)*x (fine)
-//             finesol.Print(std::cout);
-//             coarsesol.Print(std::cout);
             
             //Transfers the solution from coarse to fine mesh
             TPZStepSolver<STATE> step;
             step.SetDirect(ELDLt);
-//            coarsesol.Print(std::cout);
             an_c->Solver().Solve(coarsesol,coarsesol); //Force vector, solution
-//            coarsesol.Print(std::cout);
             TPZMGSolver<STATE> mgsolve(transfer,an_c->Solver(),1);
             mgsolve.SetMatrix(an_f->Solver().Matrix());
-//            finesol.Print(std::cout);
             mgsolve.Solve(finesol, finesol);
-//            finesol.Print(std::cout);
-            //End of transferation
             
+            //End of transferation
+            //            finesol.Print(std::cout);
+            //            coarsesol.Print(std::cout);
             
             clock5.stop();
             std::ofstream Out5("Transferation.txt");
             operator<<(Out5, clock5 );
+            
+            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"Transferation done"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
             
             TPZTimer clock6;
             clock6.start();
@@ -364,37 +395,28 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
             //Iterative method process
             
             TPZFMatrix<STATE> rhscoarse = an_c->Rhs();
-//            rhscoarse.Print(std::cout);
             TPZFMatrix<STATE> rhsfine = an_f->Rhs();
-//            rhsfine.Print(std::cout);
-//            rhsfine.Print("rhsfine" , std::cout);
-//            rhscoarse.Print("rhscoarse" , std::cout);
             TPZStepSolver<STATE> BDSolve(sp_auto);
             BDSolve.SetDirect(ELU);
             TPZSequenceSolver<STATE> seqsolver;
-
             seqsolver.SetMatrix(an_f->Solver().Matrix());
             seqsolver.AppendSolver(mgsolve); //Updates the values of the preconditioner based on the values of the matrix
             seqsolver.AppendSolver(BDSolve);
             seqsolver.AppendSolver(mgsolve);
             seqsolver.Solve(rhsfine, finesol);
-//            finesol.Print(std::cout);
-
-
-//            std::ofstream file("matblock.nb");
-//            sp->Print("k = ",file,EMathematicaInput);
             TPZStepSolver<STATE> cg_solve(an_f->Solver().Matrix());
             cg_solve.SetCG(200, seqsolver, 1.e-10, 0);
-//            finesol.Print(std::cout);
             finesol.Zero();
-//            finesol.Print(std::cout);
             cg_solve.Solve(rhsfine, finesol);
-//            finesol.Print(std::cout);
             
             MixedMesh_f->LoadSolution(finesol);
             clock6.stop();
             std::ofstream Out6("Iterative_Method.txt");
             operator<<(Out6, clock6 );
+            
+            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"Iterative method done"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
         }
         
 
@@ -425,38 +447,70 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, bo
             MixedMesh_f->Print(filePrint_fine);
             std::string name_fine = "MixedHdiv_fine.vtk";
        
-            int di;
-            if (two_d_Q) {
-                di = 2;                 //Dimension definition
-            } else {
-                di = 1;                 //Dimension definition
-            }
-            an_c->DefineGraphMesh(di, scalnames, vecnames, name_coarse);
-            an_c->PostProcess(0,di);
+
+            an_c->DefineGraphMesh(dim, scalnames, vecnames, name_coarse);
+            an_c->PostProcess(0,dim);
            
-            an_f->DefineGraphMesh(di, scalnames, vecnames, name_fine);
-            an_f->PostProcess(0,di);
-         
+            an_f->DefineGraphMesh(dim, scalnames, vecnames, name_fine);
+            an_f->PostProcess(0,dim);
+
          clock7.stop();
          std::ofstream Out7("Postprocess.txt");
          operator<<(Out7, clock7 );
          
+         std::cout<<"------------------------------"<<std::endl;
+         std::cout<<"Postprocess done"<<std::endl;
+         std::cout<<"------------------------------"<<std::endl;
         }
-        
     }
-    
-    
 }
 
 /**
- * @brief Generates the geometric mesh
+ * @brief Generates an 1D geometric mesh
+ * @param nx: Partitions number on x
+ * @param l: Mesh lenght
+ * @return Geometric 1D mesh
+ */
+
+TPZGeoMesh * GenerateGmesh1D(int nx, double l){
+    
+    TPZGeoMesh *gmesh = new TPZGeoMesh;
+    
+    double h = l/nx;
+    int Domain_Mat_Id = 1;
+    int Inlet_bc_Id = -1;
+    int Outletbc_Id = -2;
+    TPZVec<REAL> xp(3,0.0);   //Creates vector nodes
+
+    gmesh->NodeVec().Resize(nx+1);
+    for (int64_t i=0; i<nx+1; i++) {
+        xp[0] =(i)*h;
+        gmesh->NodeVec()[i]= TPZGeoNode(i, xp, *gmesh);
+    }
+    
+    TPZVec<int64_t> cornerindexes(2);   //Creates elements
+    for (int64_t iel=0; iel<nx; iel++) {
+        cornerindexes[0]=iel;
+        cornerindexes[1]=iel+1;
+        gmesh->CreateGeoElement(EOned, cornerindexes, Domain_Mat_Id, iel);
+    }
+    gmesh->Element(0)->CreateBCGeoEl(0, Inlet_bc_Id);     //Sets BC
+    gmesh->Element(nx-1)->CreateBCGeoEl(1, Outletbc_Id);
+    gmesh->SetDimension(1);
+    gmesh->BuildConnectivity();
+    return gmesh;
+}
+
+/**
+ * @brief Generates a 2D geometric mesh
  * @param nx: number of partions on x
  * @param ny: number of partions on y
  * @param l: lenght
  * @param h: height
  * @return Geometric mesh
  */
-TPZGeoMesh * GenerateGmesh(int nx, int ny, double l, double h){
+
+TPZGeoMesh * GenerateGmesh2D(int nx, int ny, double l, double h){
     
     TPZGeoMesh *gmesh = new TPZGeoMesh;
     
@@ -478,6 +532,69 @@ TPZGeoMesh * GenerateGmesh(int nx, int ny, double l, double h){
     gen.SetBC(gmesh, 6, -3);
     gen.SetBC(gmesh, 7, -4);
     return gmesh;
+}
+
+/**
+ * @brief Generates a 3D geometric mesh
+ * @param nx: Partitions number on x
+ * @param ny: Partitions number on y
+ * @param nz: Partitions number on z
+ * @param l: Mesh lenght
+ * @param h: Mesh heigh
+ * @param w: Mesh width
+ * @return Geometric 3D mesh
+ */
+
+TPZGeoMesh * GenerateGmesh3D(int nx, int ny, int nz, double l, double h, double w){
+    
+    TPZVec<int> nels(3,0);
+    nels[0]=nx;         //Elements over x
+    nels[1]=ny;         //Elements over y
+    
+    TPZVec<REAL> x0(3,0.0);
+    TPZVec<REAL> x1(3,l);
+    x1[1]=h;
+    x1[2]=0;
+    
+    TPZGeoMesh *gmesh = new TPZGeoMesh;
+    
+    TPZGenGrid gen(nels,x0,x1);
+    gen.SetElementType(EQuadrilateral);
+    gen.Read(gmesh);
+    double var = w/nz;
+    TPZExtendGridDimension extend(gmesh,var);
+    extend.SetElType(1);
+    TPZGeoMesh *gmesh3d = extend.ExtendedMesh(nz);
+    
+    for (auto gel:gmesh3d->ElementVec()) {
+        TPZFMatrix<REAL> coordinates;
+        gel->NodesCoordinates(coordinates);
+        if(coordinates(2,0)==0){
+            gel->CreateBCGeoEl(20, -1);
+        }
+        if(coordinates(2,4)==w){
+            gel->CreateBCGeoEl(25, -2);
+        }
+        
+        if(coordinates(0,0)==0.0 ){
+            gel->CreateBCGeoEl(24, -3);
+        }
+        if(coordinates(1,0)==0.0 ){
+            gel->CreateBCGeoEl(21, -4);
+        }
+        
+        if(coordinates(0,1)== l ){
+            gel->CreateBCGeoEl(22, -5);
+        }
+        if(coordinates(1,3)==h){
+            gel->CreateBCGeoEl(23, -6);
+        }
+    };
+   
+    gmesh3d->SetDimension(3);
+    gmesh3d->BuildConnectivity();
+
+    return gmesh3d;
 }
 
 /**
@@ -522,6 +639,7 @@ TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order){
     }
     return Cmesh;
 }
+
 
 /**
  * @brief Generates the constant computational mesh
@@ -596,9 +714,11 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
     
     //Insert boundary conditions
     int D=0;
+    int N=1;
     int BC1=-1;
     TPZFMatrix<STATE> val1(1,1,0.0);
     TPZFMatrix<STATE> val2(1,1,0.0);
+     val2(0,0)=0;
     TPZMaterial *bc1 = mat->CreateBC(mat, BC1, D, val1, val2);
     Cmesh->InsertMaterialObject(bc1);
 
@@ -609,13 +729,23 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
 
     int BC3=-3;
     val2(0,0)=0;
-    TPZMaterial *bc3 = mat->CreateBC(mat, BC3, D, val1, val2);
+    TPZMaterial *bc3 = mat->CreateBC(mat, BC3,D, val1, val2);
     Cmesh->InsertMaterialObject(bc3);
 
     int BC4=-4;
     val2(0,0)=0;
     TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
     Cmesh->InsertMaterialObject(bc4);
+    
+    int BC5=-5;
+    val2(0,0)=0;
+    TPZMaterial *bc5 = mat->CreateBC(mat, BC5, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc5);
+    
+    int BC6=-6;
+    val2(0,0)=0;
+    TPZMaterial *bc6 = mat->CreateBC(mat, BC6, D, val1, val2);
+    Cmesh->InsertMaterialObject(bc6);
     
 
     Cmesh->AutoBuild();
@@ -642,7 +772,7 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
  * @return Mixed computational mesh
  */
 
-TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order, bool two_d_Q){
+TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order, int dim){
     TPZGeoMesh *gmesh = fvecmesh[1]->Reference();
     TPZMultiphysicsCompMesh *MixedMesh = new TPZMultiphysicsCompMesh(gmesh);
     
@@ -654,20 +784,29 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     //Inserting material
     TPZMixedDarcyWithFourSpaces * mat = new TPZMixedDarcyWithFourSpaces(matnum, dimen);
     mat->SetPermeability(perm);
-    
-    if (two_d_Q) {
-        TPZAutoPointer<TPZFunction<STATE> > sourceterm = new TPZDummyFunction<STATE>(Ladoderecho_2D, 10);
-        mat->SetForcingFunction(sourceterm);
-    } else {
-        TPZAutoPointer<TPZFunction<STATE> > sourceterm = new TPZDummyFunction<STATE>(Ladoderecho_1D, 10);
-        mat->SetForcingFunction(sourceterm);
+    TPZAutoPointer<TPZFunction<STATE> > sourceterm ;
+    switch (dim) {
+        case 1:
+           sourceterm = new TPZDummyFunction<STATE>(Ladoderecho_1D, 10);
+            mat->SetForcingFunction(sourceterm);
+            break;
+        case 2:
+            sourceterm = new TPZDummyFunction<STATE>(Ladoderecho_2D, 10);
+            mat->SetForcingFunction(sourceterm);
+            break;
+        case 3:
+             sourceterm = new TPZDummyFunction<STATE>(Ladoderecho_3D, 10);
+            mat->SetForcingFunction(sourceterm);
+        break;
     }
+    
     
     //Inserting volumetric materials objects
     MixedMesh->InsertMaterialObject(mat);
     
     //Boundary conditions
     int D=0;
+    int N=1;
     int BC1=-1;
     TPZFMatrix<STATE> val1(1,1,0.0);
     TPZFMatrix<STATE> val2(1,1,0.0);
@@ -691,11 +830,22 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     TPZMaterial *bc4 = mat->CreateBC(mat, BC4, D, val1, val2);
     MixedMesh->InsertMaterialObject(bc4);
     
+    int BC5=-5;
+    val2(0,0)=0;
+    TPZMaterial *bc5 = mat->CreateBC(mat, BC5, D, val1, val2);
+    MixedMesh->InsertMaterialObject(bc5);
+    
+    int BC6=-6;
+    val2(0,0)=0;
+    TPZMaterial *bc6 = mat->CreateBC(mat, BC6,D, val1, val2);
+    MixedMesh->InsertMaterialObject(bc6);
+    
+    
     MixedMesh->SetAllCreateFunctionsMultiphysicElem();
     MixedMesh->SetDimModel(dimen);
     
     //Autobuild
-    TPZManVector<int,5> active_approx_spaces(4); /// 1 stands for an active approximation spaces
+    TPZManVector<int,5> active_approx_spaces(4); /// 4 stands for an active approximation spaces
     active_approx_spaces[0] = 1;
     active_approx_spaces[1] = 1;
     active_approx_spaces[2] = 1;
@@ -716,7 +866,7 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
 };
 
 /**
- * @brief Generates the force function for the 1D case
+ * @brief Generates a force function for the 1D case
  * @param pt: Points values
  * @param disp: Vector
  */
@@ -729,7 +879,7 @@ void Ladoderecho_1D (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
 }
 
 /**
- * @brief Generates the force function for the 2D case
+ * @brief Generates a force function for the 2D case
  * @param pt: Points values
  * @param disp: Vector
  */
@@ -763,8 +913,21 @@ void Ladoderecho_2D (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
 //    (-2*M_PI + 15.*x)*pow(-2*M_PI + 15.*y,2);
     
     disp[0]=fx;
+}
+
+/**
+ * @brief Generates a force function for the 3D case
+ * @param pt: Points values
+ * @param disp: Vector
+ */
+
+void Ladoderecho_3D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
+    STATE x = pt[0];
+    STATE y = pt[1];
+    STATE z = pt[2];
+    double fx= 2*(-1 + x)*x*(-1 + y)*y + 2*(-1 + x)*x*(-1 + z)*z + 2*(-1 + y)*y*(-1 + z)*z;      //Force function definition
     
-    
+    disp[0]=fx;
 }
 
 /**
@@ -823,44 +986,6 @@ void TransferDegreeOfFreedom(TPZFMatrix<STATE> & CoarseDoF, TPZFMatrix<STATE> & 
     for (int64_t i = 0 ; i < n_data; i++) {
         FineDoF(DoFIndexes[i],0) = CoarseDoF(i,0);
     }
-
-}
-
-/**
- * @brief Generates a geometric 1D mesh
- * @param nx: number of partions on x
- * @param l: lenght
- * @return Geometric 1D mesh
- */
-TPZGeoMesh * GenerateGmeshOne(int nx, double l){
-    //Creates vector nodes
-    double h = l/nx;
-    int Domain_Mat_Id = 1;
-    int Inlet_bc_Id = -1;
-    int Outletbc_Id = -2;
-    TPZVec<REAL> xp(3,0.0);
-    TPZGeoMesh *gmesh = new TPZGeoMesh;
-    gmesh->NodeVec().Resize(nx+1);
-    for (int64_t i=0; i<nx+1; i++) {
-        xp[0] =(i)*h;
-        gmesh->NodeVec()[i]= TPZGeoNode(i, xp, *gmesh);
-    }
-
-
-    //Creates elements
-    TPZVec<int64_t> cornerindexes(2);
-    for (int64_t iel=0; iel<nx; iel++) {
-        cornerindexes[0]=iel;
-        cornerindexes[1]=iel+1;
-        gmesh->CreateGeoElement(EOned, cornerindexes, Domain_Mat_Id, iel);
-    }
-    //Set BC
-    gmesh->Element(0)->CreateBCGeoEl(0, Inlet_bc_Id);
-    gmesh->Element(nx-1)->CreateBCGeoEl(1, Outletbc_Id);
-    gmesh->SetDimension(1);
-    gmesh->BuildConnectivity();
-    
-    return gmesh;
 }
 
 /**
@@ -1044,7 +1169,6 @@ void SplitConnects(TPZCompMesh *fluxmesh, TPZGeoEl *gel , int j){
         return;
     }
     
-        
         int64_t index = fluxmesh->AllocateNewConnect(cleft);
         TPZConnect &newcon = fluxmesh->ConnectVec()[index];
         cleft.DecrementElConnected();
@@ -1063,112 +1187,5 @@ void SplitConnects(TPZCompMesh *fluxmesh, TPZGeoEl *gel , int j){
         TPZFMatrix<STATE> sol(gdl+2,1,0.0);
         fluxmesh->LoadSolution(sol);
 
-
     return;
 }
-
-void HdiVSimple(int nx, int order_high, bool condense_equations_Q, bool two_d_Q){
-    
-    bool KeepOneLagrangian = false;
-    bool KeepMatrix = false;
-    
-    TPZGeoMesh *gmesh;
-    
-    // Generates a 2D geo mesh
-    TPZGeoMesh *gmesh_1 = GenerateGmesh(nx, nx, 1, 1);
-    
-    // Generates a 1D geo mesh
-    TPZGeoMesh *gmesh_2 = GenerateGmeshOne(nx, 1);
-    
-    //Asks if the problem is 2D
-    if (two_d_Q) {
-        gmesh = gmesh_1;
-    } else {
-        gmesh = gmesh_2;
-    }
-    
-    TPZMultiphysicsCompMesh *MixedMesh_c = 0;
-    TPZManVector<TPZCompMesh *> vecmesh_c(2);      //Vector for coarse mesh case (4 spaces)
-    {
-        TPZCompMesh *q_cmesh = GenerateFluxCmesh(gmesh, order_high, order_high);
-        TPZCompMesh *p_cmesh = GeneratePressureCmesh(gmesh, order_high);
-
-        vecmesh_c[0] = q_cmesh;              //Flux
-        vecmesh_c[1] = p_cmesh;              //Pressure
-        
-        MixedMesh_c = GenerateMixedCmesh(vecmesh_c, 1, two_d_Q);       //1 Stands for the corse mesh order
-    }
-    
-    if (condense_equations_Q) {             //Asks if you want to condesate the problem
-        MixedMesh_c->ComputeNodElCon();
-        int dim = MixedMesh_c->Dimension();
-        int64_t nel = MixedMesh_c->NElements();
-        for (int64_t el =0; el<nel; el++) {
-            TPZCompEl *cel = MixedMesh_c->Element(el);
-            if(!cel) continue;
-            TPZGeoEl *gel = cel->Reference();
-            if(!gel) continue;
-            if(gel->Dimension() != dim) continue;
-            int nc = cel->NConnects();
-            cel->Connect(nc-1).IncrementElConnected();
-        }
-        // Created condensed elements for the elements that have internal nodes
-        TPZCompMeshTools::CreatedCondensedElements(MixedMesh_c, KeepOneLagrangian, KeepMatrix);
-    }
-    
-    
-    //Solving the system:
-    MixedMesh_c->InitializeBlock();    //Resequence the block object, remove unconnected connect objects
-    TPZAnalysis *an_c = new TPZAnalysis;
-    
-    TPZTimer AssemblyFine;
-    AssemblyFine.start();
-    
-    // Assembly fine operator
-    an_c->Assemble();
-    AssemblyFine.stop();
-    std::ofstream Out_AssemblyFine("Assembly.txt");
-    operator<<(Out_AssemblyFine, AssemblyFine );
-
-
-    
-
-        if(1){
-            
-            TPZTimer clock7;
-            clock7.start();
-            
-            TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_c, MixedMesh_c);
-         
-            //PostProcess
-            TPZStack<std::string> scalar, vectors;
-            TPZManVector<std::string,10> scalnames(4), vecnames(1);
-            vecnames[0]  = "q";
-            scalnames[0] = "p";
-            scalnames[1] = "kappa";
-            scalnames[1] = "div_q";
-            scalnames[2] = "g_average";
-            scalnames[3] = "u_average";
-            
-            std::ofstream filePrint_coarse("MixedHdiv_coarse.txt");
-            MixedMesh_c->Print(filePrint_coarse);
-            std::string name_coarse = "MixedHdiv_coarse.vtk";
-            
-            
-            int di;
-            if (two_d_Q) {
-                di = 2;                 //Dimension definition
-            } else {
-                di = 1;                 //Dimension definition
-            }
-            an_c->DefineGraphMesh(di, scalnames, vecnames, name_coarse);
-            an_c->PostProcess(0,di);
-
-            
-            clock7.stop();
-            std::ofstream Out7("Postprocess.txt");
-            operator<<(Out7, clock7 );
-            
-        }
-        
-    }
