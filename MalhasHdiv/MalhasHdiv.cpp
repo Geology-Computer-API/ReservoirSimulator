@@ -3,14 +3,13 @@
 #include <pz_config.h>
 #endif
 
-#include "pzgeoel.h"
-#include "pzgnode.h"
-#include "pzgmesh.h"
-#include "pzbiharmonic.h"
+//#include "pzgeoel.h"
+//#include "pzgnode.h"
+//#include "pzgmesh.h"
+//#include "pzbiharmonic.h"
 #include "pzcmesh.h"
 #include "pzintel.h"
 #include "pzcompel.h"
-//#include "TPZHybridizeHDiv.h"
 #include "pzfmatrix.h"
 #include "pzvec.h"
 #include "pzmanvector.h"
@@ -26,13 +25,12 @@
 #include <TPZRefPattern.h>
 
 #include "TPZMaterial.h"
-#include "pzelasmat.h"
-#include "pzlog.h"
-
+//#include "pzelasmat.h"
+//#include "pzlog.h"
 #include "pzgengrid.h"
 
-#include <time.h>
-#include <stdio.h>
+//#include <time.h>
+//#include <stdio.h>
 
 #include <math.h>
 
@@ -49,11 +47,9 @@
 #include "TPZVTKGeoMesh.h"
 #include "TPZExtendGridDimension.h"
 
-#include "TRSLinearInterpolator.h"
-#include "TPZMatLaplacian.h"
+//#include "TPZMatLaplacian.h"
 #include "pzpoisson3d.h"
 #include "TPZNullMaterial.h"
-//#include "mixedpoisson.h"
 #include "pzbndcond.h"
 #include "TPZSSpStructMatrix.h"
 #include "pzskylstrmatrix.h"
@@ -62,7 +58,6 @@
 #include "pzanalysis.h"
 #include "pzfstrmatrix.h"
 #include "pzskylstrmatrix.h"
-#include "pzstepsolver.h"
 #include "pzsolve.h"
 #include "TPZPersistenceManager.h"
 #include "pzbuildmultiphysicsmesh.h"
@@ -78,9 +73,9 @@
 #include "TPZTimer.h"
 
 #ifdef _AUTODIFF
-#include "tfad.h"
-#include "fad.h"
-#include "pzextractval.h"
+//#include "tfad.h"
+//#include "fad.h"
+//#include "pzextractval.h"
 #endif
 
 
@@ -124,20 +119,14 @@ void ShowShape(TPZCompMesh * cmesh, int element, int funcion,std::string plotnam
 
 using namespace std;
 
-int main(){
+int main(int argc, char **argv){
     
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
     
-    TPZTimer clock;
-    clock.start();
+    HDiv(4, 1, 2, true, 3);
     
-    HDiv(200, 1, 2, false, 3);
-    
-    clock.stop();
-    std::ofstream Out("TotalTime.txt");
-    operator<<(Out, clock );
 }
 
 /**
@@ -149,9 +138,10 @@ int main(){
  */
 void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, int dim){
     
-//    TPZGeoMesh *gmesh_1D = GenerateGmesh(nx, nx, 2, 2);      // Generates a 2D geo mesh
+    //Show Shapes functions
+//    TPZGeoMesh *gmesh_1D = GenerateGmesh2D(nx, nx, 8, 8);      // Generates a 2D geo mesh
 //    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_1D, 1, 1);
-//    int el_index=3;
+//    int el_index=1;
 //    int nfun=flux->Element(el_index)->NEquations();
 //    for (int i=0; i<nfun; i++) {
 //
@@ -159,6 +149,8 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
 //        std::string file(filename+std::to_string(i)+".vtk");
 //        ShowShape(flux,el_index,i,file);
 //    };
+//
+//End Shapes functions
 
     bool KeepOneLagrangian = false;
     bool KeepMatrix = false;
@@ -167,19 +159,17 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
     
     TPZGeoMesh *gmesh;
     
-    //Asks if the problem is 2D
+    //Creates a geometric mesh with a given dimension
     switch (dim) {
         case 1:
-            gmesh = GenerateGmesh1D(nx, 1);
-
+            gmesh = GenerateGmesh1D(nx, 1);                 // 1D
             break;
         case 2:
-            gmesh = GenerateGmesh2D(nx, nx, 1, 1);
+            gmesh = GenerateGmesh2D(nx, nx, 1, 1);          // 2D
             break;
         case 3:
-            gmesh = GenerateGmesh3D(nx, nx, nx, 1, 1, 1);
+            gmesh = GenerateGmesh3D(nx, nx, nx, 1, 1, 1);   // 3D
             break;
-        
     }
    
     TPZMultiphysicsCompMesh *MixedMesh_c = 0;
@@ -210,8 +200,28 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             int nc = cel->NConnects();
             cel->Connect(nc-1).IncrementElConnected();
         }
+        
+        
+        
+        
+        //HERE
         // Created condensed elements for the elements that have internal nodes
+        std::cout<<"Antes de condensar: "<<std::endl;
+        
+        MixedMesh_c->MeshVector()[0] = GenerateFluxCmesh(gmesh, 5, order_small);
+        MixedMesh_c->MeshVector()[0]->AutoBuild();
+        MixedMesh_c->MeshVector()[1]->SetDefaultOrder(5);
+        MixedMesh_c->MeshVector()[1]->AutoBuild();
+
+        MixedMesh_c = GenerateMixedCmesh(MixedMesh_c->MeshVector(), 5, 3);
+        
+        std::cout<<MixedMesh_c->NEquations();
         TPZCompMeshTools::CreatedCondensedElements(MixedMesh_c, KeepOneLagrangian, KeepMatrix);
+        std::cout<<"Despues de condensar: "<<std::endl;
+        std::cout<<MixedMesh_c->NEquations();
+        //OK
+        
+        
     }
     
     TPZMultiphysicsCompMesh * MixedMesh_f = 0;
@@ -262,58 +272,15 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
     std::cout<<"Analysis configuration done"<<std::endl;
     std::cout<<"------------------------------"<<std::endl;
     
-    TPZTimer AssemblyFine;
-    AssemblyFine.start();
-    
     // Assembly fine operator
     an_f->Assemble();
-    
-//    //
-////    TPZStepSolver<STATE> step2;
-////    step2.SetDirect(ELDLt);
-////    an_f->SetSolver(step2);
-//    an_f->Solve();
-//
-//    //PostProcess
-//    TPZStack<std::string> scalar, vectors;
-//    TPZManVector<std::string,10> scalnames(4), vecnames(1);
-//    vecnames[0]  = "q";
-//    scalnames[0] = "p";
-//    scalnames[1] = "kappa";
-//    scalnames[1] = "div_q";
-//    scalnames[2] = "g_average";
-//    scalnames[3] = "u_average";
-//
-//
-//
-//    std::ofstream filePrint_fine("MixedHdiv_fine.txt");
-//    MixedMesh_f->Print(filePrint_fine);
-//    std::string name_fine = "MixedHdiv_fine.vtk";
-//
-//
-//    an_f->DefineGraphMesh(dim, scalnames, vecnames, name_fine);
-//    an_f->PostProcess(2,dim);
-    
-  
-    //
-    AssemblyFine.stop();
-    std::ofstream Out_AssemblyFine("Assembly_Fine.txt");
-    operator<<(Out_AssemblyFine, AssemblyFine );
     
     std::cout<<"------------------------------"<<std::endl;
     std::cout<<"Assembly Fine"<<std::endl;
     std::cout<<"------------------------------"<<std::endl;
     
-    TPZTimer AssemblyAndSolvingCoarse;
-    AssemblyAndSolvingCoarse.start();
-    
     // Assembly for coarse operator
     an_c->Assemble();
-    
-    AssemblyAndSolvingCoarse.stop();
-    
-    std::ofstream Out_AssemblyAndSolvingCoarse("Assembly_Coarse.txt");
-    operator<<(Out_AssemblyAndSolvingCoarse, AssemblyAndSolvingCoarse );
 
     std::cout<<"------------------------------"<<std::endl;
     std::cout<<"Assembly Coarse"<<std::endl;
@@ -321,8 +288,6 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
     
     // An iterative solution
     {
-        TPZTimer clock4;
-        clock4.start();
 
         // Constructing block diagonal
         if(1){
@@ -349,13 +314,6 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
                 (*sp).PutVal(pos, pos, 1.0);
             }
             
-            clock4.stop();
-            std::ofstream Out4("ConstructingDiagonalBlock.txt");
-            operator<<(Out4, clock4 );
-            
-            TPZTimer clock5;
-            clock5.start();
-            
             std::cout<<"------------------------------"<<std::endl;
             std::cout<<"Diagonal block constructed"<<std::endl;
             std::cout<<"------------------------------"<<std::endl;
@@ -381,17 +339,10 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             //            finesol.Print(std::cout);
             //            coarsesol.Print(std::cout);
             
-            clock5.stop();
-            std::ofstream Out5("Transferation.txt");
-            operator<<(Out5, clock5 );
-            
             std::cout<<"------------------------------"<<std::endl;
             std::cout<<"Transferation done"<<std::endl;
             std::cout<<"------------------------------"<<std::endl;
-            
-            TPZTimer clock6;
-            clock6.start();
-            
+
             //Iterative method process
             
             TPZFMatrix<STATE> rhscoarse = an_c->Rhs();
@@ -409,11 +360,6 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             finesol.Zero();
             cg_solve.Solve(rhsfine, finesol);
             
-            MixedMesh_f->LoadSolution(finesol);
-            clock6.stop();
-            std::ofstream Out6("Iterative_Method.txt");
-            operator<<(Out6, clock6 );
-            
             std::cout<<"------------------------------"<<std::endl;
             std::cout<<"Iterative method done"<<std::endl;
             std::cout<<"------------------------------"<<std::endl;
@@ -421,10 +367,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         
 
      if(1){
-         
-         TPZTimer clock7;
-         clock7.start();
-         
+
             TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_c, MixedMesh_c);
             TPZBuildMultiphysicsMesh::TransferFromMultiPhysics(vecmesh_f, MixedMesh_f);
 
@@ -438,25 +381,22 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             scalnames[2] = "g_average";
             scalnames[3] = "u_average";
             
-            std::ofstream filePrint_coarse("MixedHdiv_coarse.txt");
-            MixedMesh_c->Print(filePrint_coarse);
-            std::string name_coarse = "MixedHdiv_coarse.vtk";
-            
-            
-            std::ofstream filePrint_fine("MixedHdiv_fine.txt");
-            MixedMesh_f->Print(filePrint_fine);
-            std::string name_fine = "MixedHdiv_fine.vtk";
+//            std::ofstream filePrint_coarse("MixedHdiv_coarse.txt");
+//            MixedMesh_c->Print(filePrint_coarse);
+//            std::string name_coarse = "MixedHdiv_coarse.vtk";
+//
+         
+//            std::ofstream filePrint_fine("MixedHdiv_fine.txt");
+//            MixedMesh_f->Print(filePrint_fine);
+//            std::string name_fine = "MixedHdiv_fine.vtk";
        
 
-            an_c->DefineGraphMesh(dim, scalnames, vecnames, name_coarse);
+//            an_c->DefineGraphMesh(dim, scalnames, vecnames, name_coarse);
             an_c->PostProcess(0,dim);
            
-            an_f->DefineGraphMesh(dim, scalnames, vecnames, name_fine);
+//            an_f->DefineGraphMesh(dim, scalnames, vecnames, name_fine);
             an_f->PostProcess(0,dim);
 
-         clock7.stop();
-         std::ofstream Out7("Postprocess.txt");
-         operator<<(Out7, clock7 );
          
          std::cout<<"------------------------------"<<std::endl;
          std::cout<<"Postprocess done"<<std::endl;
@@ -889,7 +829,9 @@ void Ladoderecho_2D (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
     STATE x = pt[0];
     STATE y = pt[1];
     
-    double fx= 2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);        //Force function definition
+//    double fx= 2*M_PI*M_PI*sin(M_PI*x)*sin(M_PI*y);        //Force function definition
+    
+//    double fx= 2*(-1 + x)*x*(-1 + y)*y + 2*(-1 + x)*x + 2*(-1 + y)*y;
     
 //    double fx =-4144.653167389283*pow(10,
 //                                      -pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
@@ -899,18 +841,18 @@ void Ladoderecho_2D (const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
 //    4771.70829943056*pow(10,
 //                         -pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
 //    (-2*M_PI + 15.*x)*pow(-2*M_PI + 15.*y,2);
-//
-//    double fx = -4144.653167389282*pow(2,2 - pow(-2*M_PI + 15.*x,2) -
-//                                       pow(-2*M_PI + 15.*y,2))*
-//    pow(5,-pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
-//    (-2*M_PI + 15.*x) + 4771.708299430558*
-//    pow(2,2 - pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
-//    pow(5,-pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
-//    pow(-2*M_PI + 15.*x,3) +
-//    4771.708299430558*pow(2,
-//                          2 - pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
-//    pow(5,-pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
-//    (-2*M_PI + 15.*x)*pow(-2*M_PI + 15.*y,2);
+
+    double fx = -4144.653167389282*pow(2,2 - pow(-2*M_PI + 15.*x,2) -
+                                       pow(-2*M_PI + 15.*y,2))*
+    pow(5,-pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
+    (-2*M_PI + 15.*x) + 4771.708299430558*
+    pow(2,2 - pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
+    pow(5,-pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
+    pow(-2*M_PI + 15.*x,3) +
+    4771.708299430558*pow(2,
+                          2 - pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
+    pow(5,-pow(-2*M_PI + 15.*x,2) - pow(-2*M_PI + 15.*y,2))*
+    (-2*M_PI + 15.*x)*pow(-2*M_PI + 15.*y,2);
     
     disp[0]=fx;
 }
@@ -925,6 +867,7 @@ void Ladoderecho_3D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp){
     STATE x = pt[0];
     STATE y = pt[1];
     STATE z = pt[2];
+    
     double fx= 2*(-1 + x)*x*(-1 + y)*y + 2*(-1 + x)*x*(-1 + z)*z + 2*(-1 + y)*y*(-1 + z)*z;      //Force function definition
     
     disp[0]=fx;
@@ -1096,13 +1039,14 @@ void ShowShape(TPZCompMesh * cmesh, int element, int funcion, std::string plotfi
                         int64_t pos = cmesh->Block().Position(sec_number);
                         pos = pos +  delta;
                         sol.Zero();
-                        sol(pos,0)=1.0;
+                        sol(pos,0)=-1.0;
+                    if (funcion == 3 || funcion == 6 ){sol(pos,0)=1.0;};
                         cmesh->LoadSolution(sol);
 
                         TPZAnalysis *an = new TPZAnalysis(cmesh,false);
                         {
                             const int dim = an->Mesh()->Dimension();
-                            int div = 5;
+                            int div = 3;
                             // std::string plotfile = "SHAPES.vtk";
                             TPZStack<std::string> scalar_names, vec_names;
                             
