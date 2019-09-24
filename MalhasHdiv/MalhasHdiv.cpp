@@ -88,7 +88,7 @@ TPZGeoMesh * GenerateGmesh3D(int nx, int ny, int nz, double l, double h, double 
 TPZCompMesh * GeneratePressureCmesh(TPZGeoMesh *Gmesh, int order_internal);
 TPZCompMesh * GenerateConstantCmesh(TPZGeoMesh *Gmesh, bool third_LM);
 TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *Gmesh, int order_internal, int order_border);
-TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order, int two_d_Q);
+TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int two_d_Q);
 
 //Stablish de force fuction for 1D and 2D mesh
 void Ladoderecho_1D(const TPZVec<REAL> &pt, TPZVec<STATE> &disp);
@@ -116,7 +116,7 @@ void SplitConnects(TPZCompMesh *fluxmesh, TPZGeoEl *gel ,int j);
 //Shows shape functions for a certain element
 void ShowShape(TPZCompMesh * cmesh, int element, int funcion,std::string plotname);
 void HDiv2(int nx, int order_small, int order_high, bool condense_equations_Q, int dim);
-
+std::ofstream log_file("Results.txt");
 using namespace std;
 
 int main(int argc, char **argv){
@@ -124,8 +124,26 @@ int main(int argc, char **argv){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
+    int fine_order_max = 8;
+    int coarse_order = 1;
+    int max_nx = 15;
+    int dim_max= 3;
+    log_file<<"order    nels    qC   pC  qCav    pCav    mixC    qCCd    pCCd    qavCCd  pavCCd  mixCCd  qF   pF  qFav    pFav    mixF    qFCd    pFCd    qavFCd  pavFCd  mixFCd    niter"<<std::endl;
+
+    for (int fineorder=1; fineorder<= fine_order_max; fineorder++) {
+        for (int nx=1; nx<max_nx; nx++) {
+            log_file<<fineorder;
+            HDiv(nx, coarse_order, fineorder, true, 2);
+            log_file<<endl;
+          
+        }
+    }
     
-    HDiv(1, 1, 2, true, 2);
+   
+    
+    
+    
+    
     
 }
 
@@ -171,7 +189,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             gmesh = GenerateGmesh3D(nx, nx, nx, 1, 1, 1);   // 3D
             break;
     }
-   
+   log_file<<" "<<gmesh->NElements();
     TPZMultiphysicsCompMesh *MixedMesh_c = 0;
     TPZManVector<TPZCompMesh *> vecmesh_c(4);      //Vector for coarse mesh case (4 spaces)
     {
@@ -183,12 +201,13 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         vecmesh_c[1] = p_cmesh;              //Pressure
         vecmesh_c[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_c[3] = pavg_cmesh;           //Average pressure
+        MixedMesh_c = GenerateMixedCmesh(vecmesh_c, dim);       //1 Stands for the corse mesh order
         
-        MixedMesh_c = GenerateMixedCmesh(vecmesh_c, 1, dim);       //1 Stands for the corse mesh order
-    }
-    
-    
-    
+        log_file<<" "<<q_cmesh->NEquations();
+        log_file<<" "<<p_cmesh->NEquations();
+        log_file<<" "<<gavg_cmesh->NEquations();
+        log_file<<" "<<pavg_cmesh->NEquations();
+        log_file<<" "<<MixedMesh_c->NEquations();
     
     if (condense_equations_Q) {             //Asks if you want to condesate the problem
         MixedMesh_c->ComputeNodElCon();
@@ -204,32 +223,45 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             cel->Connect(nc-1).IncrementElConnected();
         }
         
+
+        TPZCompMeshTools::CreatedCondensedElements(MixedMesh_c, KeepOneLagrangian, KeepMatrix);
+        int nconnects = MixedMesh_c->NConnects();
+        int eqflux = 0;
+        int eqpress =0;
+        int eqqav =0;
+        int eqpav =0;
+        for (int icon = 0; icon< nconnects; icon++) {
+            TPZConnect &conect = MixedMesh_c->ConnectVec()[icon];
+            if (conect.LagrangeMultiplier() == 0 && conect.IsCondensed()==0) {
+                eqflux += conect.NShape();
+            }
+           
+            if (conect.LagrangeMultiplier() == 1 && conect.IsCondensed()==0) {
+                eqpress += conect.NShape();;
+            }
+            if (conect.LagrangeMultiplier() == 2 && conect.IsCondensed()==0) {
+                eqqav +=conect.NShape();
+            }
+            if (conect.LagrangeMultiplier() == 3 && conect.IsCondensed()==0) {
+                eqpav += conect.NShape();
+            }
+            
+        }
+        log_file<<" "<<eqflux;
+        log_file<<" "<<eqpress;
+        log_file<<" "<<eqqav;
+        log_file<<" "<<eqpav;
+        log_file<<" "<<MixedMesh_c->NEquations();
         
 
-//        //HERE
-//        // Created condensed elements for the elements that have internal nodes
-//        std::cout<<"Antes de condensar: "<<std::endl;
-//        
-//        MixedMesh_c->MeshVector()[0] = GenerateFluxCmesh(gmesh, 2, order_small);
-//        MixedMesh_c->MeshVector()[0]->AutoBuild();
-//        MixedMesh_c->MeshVector()[1]->SetDefaultOrder(5);
-//        MixedMesh_c->MeshVector()[1]->AutoBuild();
-//
-//        MixedMesh_c = GenerateMixedCmesh(MixedMesh_c->MeshVector(), 5, 3);
-//        
-//        std::cout<<MixedMesh_c->NEquations();
-        TPZCompMeshTools::CreatedCondensedElements(MixedMesh_c, KeepOneLagrangian, KeepMatrix);
-//        std::cout<<"Despues de condensar: "<<std::endl;
-//        std::cout<<MixedMesh_c->NEquations();
-//        //OK
-        
-        
+        }
     }
     
     TPZMultiphysicsCompMesh * MixedMesh_f = 0;
     TPZManVector<TPZCompMesh *> vecmesh_f(4);      //Vector for fine mesh case (4 spaces)
     {
         TPZCompMesh *q_cmesh = GenerateFluxCmesh(gmesh, order_high, order_small);
+        
         TPZCompMesh *p_cmesh = GeneratePressureCmesh(gmesh, order_high);
         TPZCompMesh *gavg_cmesh = GenerateConstantCmesh(gmesh,false);
         TPZCompMesh *pavg_cmesh = GenerateConstantCmesh(gmesh,true);
@@ -238,8 +270,14 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         vecmesh_f[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_f[3] = pavg_cmesh;           //Average pressure
         
-        MixedMesh_f = GenerateMixedCmesh(vecmesh_f, 2, dim); //2 Stands for the fine mesh order
-    }
+        MixedMesh_f = GenerateMixedCmesh(vecmesh_f, dim); //2 Stands for the fine mesh order
+        log_file<<" "<<q_cmesh->NEquations();
+        log_file<<" "<<p_cmesh->NEquations();
+        log_file<<" "<<gavg_cmesh->NEquations();
+        log_file<<" "<<pavg_cmesh->NEquations();
+        log_file<<" "<<MixedMesh_c->NEquations();
+        
+    
     
     //Asks if you want to condesate the problem
     if (condense_equations_Q) {
@@ -259,9 +297,37 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         
         // Created condensed elements for the elements that have internal nodes
         TPZCompMeshTools::CreatedCondensedElements(MixedMesh_f, KeepOneLagrangian, KeepMatrix);
+        
+        int nconnects = MixedMesh_c->NConnects();
+        int eqflux = 0;
+        int eqpress =0;
+        int eqqav =0;
+        int eqpav =0;
+        for (int icon = 0; icon< nconnects; icon++) {
+            TPZConnect &conect = MixedMesh_c->ConnectVec()[icon];
+            if (conect.LagrangeMultiplier() == 0 && conect.IsCondensed()==0) {
+                eqflux += conect.NShape();
+            }
+            
+            if (conect.LagrangeMultiplier() == 1 && conect.IsCondensed()==0) {
+                eqpress += conect.NShape();;
+            }
+            if (conect.LagrangeMultiplier() == 2 && conect.IsCondensed()==0) {
+                eqqav +=conect.NShape();
+            }
+            if (conect.LagrangeMultiplier() == 3 && conect.IsCondensed()==0) {
+                eqpav += conect.NShape();
+            }
+            
+        }
+        log_file<<" "<<eqflux;
+        log_file<<" "<<eqpress;
+        log_file<<" "<<eqqav;
+        log_file<<" "<<eqpav;
+        log_file<<" "<<MixedMesh_c->NEquations();
     }
 
-
+    }
     //Solving the system:
     MixedMesh_c->InitializeBlock();    //Resequence the block object, remove unconnected connect objects
     MixedMesh_f->InitializeBlock();    //and reset the dimension of the solution vector
@@ -361,7 +427,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             cg_solve.SetCG(200, seqsolver, 1.e-10, 0);
             finesol.Zero();
             cg_solve.Solve(rhsfine, finesol);
-            
+            log_file<<" "<<cg_solve.NumIterations();
             std::cout<<"------------------------------"<<std::endl;
             std::cout<<"Iterative method done"<<std::endl;
             std::cout<<"------------------------------"<<std::endl;
@@ -456,7 +522,7 @@ void HDiv2(int nx, int order_small, int order_high, bool condense_equations_Q, i
         vecmesh_c[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_c[3] = pavg_cmesh;           //Average pressure
         
-        MixedMesh_c = GenerateMixedCmesh(vecmesh_c, 1, dim);       //1 Stands for the corse mesh order
+        MixedMesh_c = GenerateMixedCmesh(vecmesh_c, dim);       //1 Stands for the corse mesh order
     }
     
     
@@ -474,7 +540,7 @@ void HDiv2(int nx, int order_small, int order_high, bool condense_equations_Q, i
             MixedMesh_c->MeshVector()[1]->SetDefaultOrder(5);
             MixedMesh_c->MeshVector()[1]->AutoBuild();
             
-            MixedMesh_c = GenerateMixedCmesh(MixedMesh_c->MeshVector(), 5, 3);
+            MixedMesh_c = GenerateMixedCmesh(MixedMesh_c->MeshVector(), 3);
             
             std::cout<<MixedMesh_c->NEquations();
             
@@ -521,7 +587,7 @@ void HDiv2(int nx, int order_small, int order_high, bool condense_equations_Q, i
         vecmesh_f[2] = gavg_cmesh;           //Average distribute flux
         vecmesh_f[3] = pavg_cmesh;           //Average pressure
         
-        MixedMesh_f = GenerateMixedCmesh(vecmesh_f, 2, dim); //2 Stands for the fine mesh order
+        MixedMesh_f = GenerateMixedCmesh(vecmesh_f, dim); //2 Stands for the fine mesh order
     }
     
     //Asks if you want to condesate the problem
@@ -750,7 +816,7 @@ TPZGeoMesh * GenerateGmesh2D(int nx, int ny, double l, double h){
     
     //Setting boundary conditions (negative numbers to recognize them)
     TPZGenGrid gen(nels,x0,x1);
-    gen.SetElementType(ETriangle);
+    gen.SetElementType(EQuadrilateral);
     gen.Read(gmesh);
     gen.SetBC(gmesh, 4, -1);
     gen.SetBC(gmesh, 5, -2);
@@ -997,7 +1063,7 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
  * @return Mixed computational mesh
  */
 
-TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int order, int dim){
+TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int dim){
     TPZGeoMesh *gmesh = fvecmesh[1]->Reference();
     TPZMultiphysicsCompMesh *MixedMesh = new TPZMultiphysicsCompMesh(gmesh);
     
@@ -1081,13 +1147,6 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     TPZBuildMultiphysicsMesh::AddConnects(fvecmesh,MixedMesh);
     TPZBuildMultiphysicsMesh::TransferFromMeshes(fvecmesh, MixedMesh);
     
-
-    std::cout<<"n equ Mixed: "<<MixedMesh->NEquations()<<std::endl;
-    std::cout<<"n equ Flux: "<<fvecmesh[0]->NEquations()<<std::endl;
-    std::cout<<"n equ Pressure: "<<fvecmesh[1]->NEquations()<<std::endl;
-    std::cout<<"n equ Constant: "<<fvecmesh[2]->NEquations()<<std::endl;
-    std::cout<<"n equ Constant: "<<fvecmesh[3]->NEquations()<<std::endl;
-    std::cout<<"--------------------"<<std::endl;
     return MixedMesh;
 };
 
