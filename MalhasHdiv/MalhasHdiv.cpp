@@ -175,8 +175,8 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
     TPZMultiphysicsCompMesh *MixedMesh_c = 0;
     TPZManVector<TPZCompMesh *> vecmesh_c(4);      //Vector for coarse mesh case (4 spaces)
     {
-        TPZCompMesh *q_cmesh = GenerateFluxCmesh(gmesh, order_high, order_small);
-        TPZCompMesh *p_cmesh = GeneratePressureCmesh(gmesh, order_high);
+        TPZCompMesh *q_cmesh = GenerateFluxCmesh(gmesh, order_small, order_small);
+        TPZCompMesh *p_cmesh = GeneratePressureCmesh(gmesh, order_small);
         TPZCompMesh *gavg_cmesh = GenerateConstantCmesh(gmesh,false);
         TPZCompMesh *pavg_cmesh = GenerateConstantCmesh(gmesh,true);
         vecmesh_c[0] = q_cmesh;              //Flux
@@ -229,7 +229,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
     TPZMultiphysicsCompMesh * MixedMesh_f = 0;
     TPZManVector<TPZCompMesh *> vecmesh_f(4);      //Vector for fine mesh case (4 spaces)
     {
-        TPZCompMesh *q_cmesh = GenerateFluxCmesh(gmesh, order_high, order_high);
+        TPZCompMesh *q_cmesh = GenerateFluxCmesh(gmesh, order_high, order_small);
         TPZCompMesh *p_cmesh = GeneratePressureCmesh(gmesh, order_high);
         TPZCompMesh *gavg_cmesh = GenerateConstantCmesh(gmesh,false);
         TPZCompMesh *pavg_cmesh = GenerateConstantCmesh(gmesh,true);
