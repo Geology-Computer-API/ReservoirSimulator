@@ -125,7 +125,7 @@ int main(int argc, char **argv){
     InitializePZLOG();
 #endif
     
-    HDiv(4, 1, 2, true, 3);
+    HDiv(1, 1, 2, true, 2);
     
 }
 
@@ -206,22 +206,22 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         
         
 
-        //HERE
-        // Created condensed elements for the elements that have internal nodes
-        std::cout<<"Antes de condensar: "<<std::endl;
-        
-        MixedMesh_c->MeshVector()[0] = GenerateFluxCmesh(gmesh, 5, order_small);
-        MixedMesh_c->MeshVector()[0]->AutoBuild();
-        MixedMesh_c->MeshVector()[1]->SetDefaultOrder(5);
-        MixedMesh_c->MeshVector()[1]->AutoBuild();
-
-        MixedMesh_c = GenerateMixedCmesh(MixedMesh_c->MeshVector(), 5, 3);
-        
-        std::cout<<MixedMesh_c->NEquations();
+//        //HERE
+//        // Created condensed elements for the elements that have internal nodes
+//        std::cout<<"Antes de condensar: "<<std::endl;
+//        
+//        MixedMesh_c->MeshVector()[0] = GenerateFluxCmesh(gmesh, 2, order_small);
+//        MixedMesh_c->MeshVector()[0]->AutoBuild();
+//        MixedMesh_c->MeshVector()[1]->SetDefaultOrder(5);
+//        MixedMesh_c->MeshVector()[1]->AutoBuild();
+//
+//        MixedMesh_c = GenerateMixedCmesh(MixedMesh_c->MeshVector(), 5, 3);
+//        
+//        std::cout<<MixedMesh_c->NEquations();
         TPZCompMeshTools::CreatedCondensedElements(MixedMesh_c, KeepOneLagrangian, KeepMatrix);
-        std::cout<<"Despues de condensar: "<<std::endl;
-        std::cout<<MixedMesh_c->NEquations();
-        //OK
+//        std::cout<<"Despues de condensar: "<<std::endl;
+//        std::cout<<MixedMesh_c->NEquations();
+//        //OK
         
         
     }
@@ -1081,6 +1081,7 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     TPZBuildMultiphysicsMesh::AddConnects(fvecmesh,MixedMesh);
     TPZBuildMultiphysicsMesh::TransferFromMeshes(fvecmesh, MixedMesh);
     
+
     std::cout<<"n equ Mixed: "<<MixedMesh->NEquations()<<std::endl;
     std::cout<<"n equ Flux: "<<fvecmesh[0]->NEquations()<<std::endl;
     std::cout<<"n equ Pressure: "<<fvecmesh[1]->NEquations()<<std::endl;
