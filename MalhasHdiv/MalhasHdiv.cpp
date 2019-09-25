@@ -124,14 +124,15 @@ int main(int argc, char **argv){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    int fine_order_max = 8;
+    int fine_order_max = 3;
     int coarse_order = 1;
-    int max_nx = 15;
+    int max_nx = 8;
     int dim_max= 3;
     log_file<<"order    nels    qC   pC  qCav    pCav    mixC    qCCd    pCCd    qavCCd  pavCCd  mixCCd  qF   pF  qFav    pFav    mixF    qFCd    pFCd    qavFCd  pavFCd  mixFCd    niter"<<std::endl;
 
     for (int fineorder=1; fineorder<= fine_order_max; fineorder++) {
         for (int nx=1; nx<max_nx; nx++) {
+            std::cout<<"Simulation: "<<(fineorder-1)*max_nx + nx <<" / "<<fine_order_max*max_nx<<std::endl;
             log_file<<fineorder;
             HDiv(nx, coarse_order, fineorder, true, 2);
             log_file<<endl;
