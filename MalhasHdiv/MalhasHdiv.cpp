@@ -72,6 +72,9 @@
 #include "pzmgsolver.h"
 #include "TPZTimer.h"
 
+#include "TPZCondensedMeshAlgebra.h"
+#include "TPZDistributedMeshAlgebra.h"
+
 #ifdef _AUTODIFF
 //#include "tfad.h"
 //#include "fad.h"
@@ -125,22 +128,25 @@ int main(int argc, char **argv){
 #ifdef LOG4CXX
     InitializePZLOG();
 #endif
-    int fine_order_max = 5;
+    int fine_order_max = 2;
     int coarse_order = 1;
-    int max_nx = 200;
+    int max_nx = 5;
     
-    log_file<<"Order    NEls    qC   pC  qCav    pCav    mixC    qCCd    pCCd    qavCCd  pavCCd  mixCCd  qF   pF  qFav    pFav    mixF    qFCd    pFCd    qavFCd  pavFCd  mixFCd    NIter"<<std::endl;
+    log_file<<"Order    NEls    mixC    mixCCd    mixF  mixFCd    NIter"<<std::endl;
+//    log_file<<"Order    NEls    qC   pC  qCav    pCav    mixC    qCCd    pCCd    qavCCd  pavCCd  mixCCd  qF   pF  qFav    pFav    mixF    qFCd    pFCd    qavFCd  pavFCd  mixFCd    NIter"<<std::endl;
 
     for (int fineorder=2; fineorder<= fine_order_max; fineorder++){
-        for (int nx=120; nx<=max_nx; nx= nx+20) {
+        for (int nx=1; nx<=max_nx; nx++) {
             std::cout<<"-------------------------------------------"<<endl;
             std::cout<<"*******************************************"<<endl;
             std::cout<<"Simulation: "<<(fineorder-1)*(max_nx) + nx <<" / "<<fine_order_max*max_nx<<std::endl;
             std::cout<<"*******************************************"<<endl;
             std::cout<<"-------------------------------------------"<<endl;
+        
             log_file<<fineorder;
             HDiv(nx, coarse_order, fineorder, true, 2);
             log_file<<endl;
+            
         }
     }
 }
@@ -155,9 +161,9 @@ int main(int argc, char **argv){
  */
 void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, int dim){
     
-    //Show Shapes functions
-//    TPZGeoMesh *gmesh_1D = GenerateGmesh2D(nx, nx, 8, 8);      // Generates a 2D geo mesh
-//    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_1D, 1, 1);
+////    Show Shapes functions
+//    TPZGeoMesh *gmesh_SS = GenerateGmesh2D(nx, nx, 26, 26);      // Generates a 2D geo mesh
+//    TPZCompMesh *flux = GenerateFluxCmesh(gmesh_SS, 2, 2);
 //    int el_index=1;
 //    int nfun=flux->Element(el_index)->NEquations();
 //    for (int i=0; i<nfun; i++) {
@@ -167,10 +173,10 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
 //        ShowShape(flux,el_index,i,file);
 //    };
 //
-//End Shapes functions
+////End Shapes functions
 
     bool KeepOneLagrangian = false;
-    bool KeepMatrix = false;
+    bool KeepMatrix = false;            //Delete the condensed matrix after is used
     bool must_opt_band_width_Q = true;
     int number_threads = 0;
     
@@ -188,7 +194,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             gmesh = GenerateGmesh3D(nx, nx, nx, 1, 1, 1);   // 3D
             break;
     }
-    int num=gmesh->NElements()-(6*nx);
+    int num=gmesh->NElements();
    log_file<<" "<<num;
     
     TPZMultiphysicsCompMesh *MixedMesh_c = 0;
@@ -204,11 +210,8 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         vecmesh_c[3] = pavg_cmesh;           //Average pressure
         MixedMesh_c = GenerateMixedCmesh(vecmesh_c, dim);
         
-        log_file<<" "<<q_cmesh->NEquations();
-        log_file<<" "<<p_cmesh->NEquations();
-        log_file<<" "<<gavg_cmesh->NEquations();
-        log_file<<" "<<pavg_cmesh->NEquations();
         log_file<<" "<<MixedMesh_c->NEquations();
+
     
     if (condense_equations_Q) {             //Asks if you want to condesate the problem
         MixedMesh_c->ComputeNodElCon();
@@ -226,31 +229,10 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         
 
         TPZCompMeshTools::CreatedCondensedElements(MixedMesh_c, KeepOneLagrangian, KeepMatrix);
-        int nconnects = MixedMesh_c->NConnects();
-        int eqflux = 0;
-        int eqpress = 0;
-        int eqqav = 0;
-        int eqpav = 0;
-        for (int icon = 0; icon< nconnects; icon++) {
-            TPZConnect &conect = MixedMesh_c->ConnectVec()[icon];
-            if (conect.LagrangeMultiplier() == 0 && conect.IsCondensed()==0) {
-                eqflux += conect.NShape();
-            }
-            if (conect.LagrangeMultiplier() == 1 && conect.IsCondensed()==0) {
-                eqpress += conect.NShape();;
-            }
-            if (conect.LagrangeMultiplier() == 2 && conect.IsCondensed()==0) {
-                eqqav +=conect.NShape();
-            }
-            if (conect.LagrangeMultiplier() == 3 && conect.IsCondensed()==0) {
-                eqpav += conect.NShape();
-            }
-        }
-        log_file<<" "<<eqflux;
-        log_file<<" "<<eqpress;
-        log_file<<" "<<eqqav;
-        log_file<<" "<<eqpav;
+        
         log_file<<" "<<MixedMesh_c->NEquations();
+//        std::ofstream filePrint_coarse("MixedHdiv_coarse.txt");
+//        MixedMesh_c->Print(filePrint_coarse);
         }
     }
     
@@ -268,10 +250,7 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         vecmesh_f[3] = pavg_cmesh;           //Average pressure
         
         MixedMesh_f = GenerateMixedCmesh(vecmesh_f, dim);
-        log_file<<" "<<q_cmesh->NEquations();
-        log_file<<" "<<p_cmesh->NEquations();
-        log_file<<" "<<gavg_cmesh->NEquations();
-        log_file<<" "<<pavg_cmesh->NEquations();
+
         log_file<<" "<<MixedMesh_f->NEquations();
         
     
@@ -295,35 +274,15 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
         // Created condensed elements for the elements that have internal nodes
         TPZCompMeshTools::CreatedCondensedElements(MixedMesh_f, KeepOneLagrangian, KeepMatrix);
         
-        int nconnects = MixedMesh_c->NConnects();
-        int eqflux = 0;
-        int eqpress = 0;
-        int eqqav = 0;
-        int eqpav = 0;
-        for (int icon = 0; icon< nconnects; icon++) {
-            TPZConnect &conect = MixedMesh_c->ConnectVec()[icon];
-            if (conect.LagrangeMultiplier() == 0 && conect.IsCondensed()==0) {
-                eqflux += conect.NShape();
-            }
-            
-            if (conect.LagrangeMultiplier() == 1 && conect.IsCondensed()==0) {
-                eqpress += conect.NShape();;
-            }
-            if (conect.LagrangeMultiplier() == 2 && conect.IsCondensed()==0) {
-                eqqav +=conect.NShape();
-            }
-            if (conect.LagrangeMultiplier() == 3 && conect.IsCondensed()==0) {
-                eqpav += conect.NShape();
-            }
-        }
-        log_file<<" "<<eqflux;
-        log_file<<" "<<eqpress;
-        log_file<<" "<<eqqav;
-        log_file<<" "<<eqpav;
+
         log_file<<" "<<MixedMesh_f->NEquations();
+        
+//                std::ofstream filePrint_fine("MixedHdiv_fine.txt");
+//                MixedMesh_f->Print(filePrint_fine);
     }
     }
     
+//    return;
     //Solving the system:
     MixedMesh_c->InitializeBlock();    //Resequence the block object, remove unconnected connect objects
     MixedMesh_f->InitializeBlock();    //and reset the dimension of the solution vector
@@ -339,16 +298,16 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
     // Assembly fine operator
     an_f->Assemble();
     
-//    std::cout<<"------------------------------"<<std::endl;
-//    std::cout<<"Assembly Fine"<<std::endl;
-//    std::cout<<"------------------------------"<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
+    std::cout<<"Assembly Fine"<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
     
     // Assembly for coarse operator
     an_c->Assemble();
 
-//    std::cout<<"------------------------------"<<std::endl;
-//    std::cout<<"Assembly Coarse"<<std::endl;
-//    std::cout<<"------------------------------"<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
+    std::cout<<"Assembly Coarse"<<std::endl;
+    std::cout<<"------------------------------"<<std::endl;
     
     // An iterative solution
     {
@@ -378,12 +337,12 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
                 (*sp).PutVal(pos, pos, 1.0);
             }
             
-//            std::cout<<"------------------------------"<<std::endl;
-//            std::cout<<"Diagonal block constructed"<<std::endl;
-//            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"Diagonal block constructed"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
             
             TPZVec<int64_t> Indexes;
-            IndexVectorCoFi(MixedMesh_c, MixedMesh_f, Indexes);
+            IndexVectorCoFi(MixedMesh_c, MixedMesh_f, Indexes);    //Transfer DOF from coarse to fine
             int64_t neq_coarse = MixedMesh_c->NEquations();
             int64_t neq_fine = MixedMesh_f->NEquations();
             TPZHdivTransfer<STATE> *transfer = new TPZHdivTransfer<STATE>(neq_coarse, neq_fine, Indexes);
@@ -403,9 +362,9 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             //            finesol.Print(std::cout);
             //            coarsesol.Print(std::cout);
             
-//            std::cout<<"------------------------------"<<std::endl;
-//            std::cout<<"Transferation done"<<std::endl;
-//            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"Transferation done"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
 
             //Iterative method process
             
@@ -424,9 +383,10 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             finesol.Zero();
             cg_solve.Solve(rhsfine, finesol);
             log_file<<" "<<cg_solve.NumIterations();
-//            std::cout<<"------------------------------"<<std::endl;
-//            std::cout<<"Iterative method done"<<std::endl;
-//            std::cout<<"------------------------------"<<std::endl;
+            
+            std::cout<<"------------------------------"<<std::endl;
+            std::cout<<"Iterative method done"<<std::endl;
+            std::cout<<"------------------------------"<<std::endl;
         }
         
 
@@ -462,9 +422,9 @@ void HDiv(int nx, int order_small, int order_high, bool condense_equations_Q, in
             an_f->PostProcess(0,dim);
 
          
-//         std::cout<<"------------------------------"<<std::endl;
-//         std::cout<<"Postprocess done"<<std::endl;
-//         std::cout<<"------------------------------"<<std::endl;
+         std::cout<<"------------------------------"<<std::endl;
+         std::cout<<"Postprocess done"<<std::endl;
+         std::cout<<"------------------------------"<<std::endl;
         }
     }
 }
@@ -535,6 +495,7 @@ TPZGeoMesh * GenerateGmesh2D(int nx, int ny, double l, double h){
     gen.SetBC(gmesh, 5, -2);
     gen.SetBC(gmesh, 6, -3);
     gen.SetBC(gmesh, 7, -4);
+
     return gmesh;
 }
 
@@ -718,7 +679,6 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
     
     //Insert boundary conditions
     int D=0;
-    int N=1;
     int BC1=-1;
     TPZFMatrix<STATE> val1(1,1,0.0);
     TPZFMatrix<STATE> val2(1,1,0.0);
@@ -745,7 +705,7 @@ TPZCompMesh * GenerateFluxCmesh(TPZGeoMesh *mesh, int order_internal, int order_
     val2(0,0)=0;
     TPZMaterial *bc5 = mat->CreateBC(mat, BC5, D, val1, val2);
     Cmesh->InsertMaterialObject(bc5);
-    
+
     int BC6=-6;
     val2(0,0)=0;
     TPZMaterial *bc6 = mat->CreateBC(mat, BC6, D, val1, val2);
@@ -810,7 +770,6 @@ TPZMultiphysicsCompMesh * GenerateMixedCmesh(TPZVec<TPZCompMesh *> fvecmesh, int
     
     //Boundary conditions
     int D=0;
-    int N=1;
     int BC1=-1;
     TPZFMatrix<STATE> val1(1,1,0.0);
     TPZFMatrix<STATE> val2(1,1,0.0);
