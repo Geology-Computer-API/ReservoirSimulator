@@ -6,12 +6,17 @@
 
 #include "TPZDistributedMeshAlgebra.h"
 
-//TPZDistributedMeshAlgebra::TPZDistributedMeshAlgebra(){
-//    
-//}
-//TPZDistributedMeshAlgebra::~TPZDistributedMeshAlgebra(){
-//    
-//}
+TPZDistributedMeshAlgebra::TPZDistributedMeshAlgebra(){
+    
+}
+TPZDistributedMeshAlgebra::~TPZDistributedMeshAlgebra(){
+    
+}
+
+void TPZDistributedMeshAlgebra::AssembleDiagonal(TPZBlockDiagonalStructMatrix &father_diagonal){
+    
+    
+}
 
 void TPZDistributedMeshAlgebra::ComputeResidual(TPZFMatrix<STATE> &father_rhs){
      DebugStop();

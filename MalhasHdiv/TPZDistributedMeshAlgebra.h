@@ -12,6 +12,7 @@
 #include "tpzverysparsematrix.h"
 #include "pzblockdiag.h"
 #include "pzmatred.h"
+#include "pzbdstrmatrix.h"
 
 
 class TPZDistributedMeshAlgebra
@@ -22,7 +23,7 @@ protected:
     //(when the are no children)
     //otherwise fStiffness = 0
     TPZMatrix<STATE> *fStiffness;
-    //repsents the right hand side
+    //represents the right hand side
     TPZFMatrix<STATE> fRhs;
     //represents the block structure of the matrix
     TPZBlock<STATE> fBlock;
@@ -49,10 +50,13 @@ protected:
     
 public:
     
+    TPZDistributedMeshAlgebra();
+    ~TPZDistributedMeshAlgebra();
+    
     
     //compute the values of the blockdiagonal
     //fill in the block diagonal contribution to the father mesh
-//    void AssembleDiagonal(TPZSparseBlockDiagonal<STATE> &father_diagonal);
+    void AssembleDiagonal(TPZBlockDiagonalStructMatrix &father_diagonal);
     //method for computing the residual Res=F-KU
     //returns the contribution to the father residual
     void ComputeResidual(TPZFMatrix<STATE> &father_rhs);

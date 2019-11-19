@@ -39,9 +39,7 @@ void TPZHdivTransfer<TVar>::Print(const char *name, std::ostream &out , const Ma
  */
 template<class TVar>
 void TPZHdivTransfer<TVar>::Gather(TPZFMatrix<TVar> &y, TPZFMatrix<TVar> &x){
-    
-
-    
+    DebugStop();
 }
 
 /**
