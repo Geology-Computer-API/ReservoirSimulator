@@ -81,7 +81,7 @@
 class ConfigurateCase {
     TPZGeoMesh *m_gmesh;
     SimulationCase fsim_case;
-    int m_fineorder = 2;
+    int m_fineorder = 1;
     int m_coarseorder = 1;
     public:
     

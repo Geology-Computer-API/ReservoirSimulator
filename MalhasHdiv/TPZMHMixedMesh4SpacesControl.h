@@ -49,7 +49,17 @@ public:
 //        
 //    }
 //    
-//    
+//
+    TPZVec<TPZAutoPointer<TPZCompMesh> > GetMeshes()
+    {
+        TPZManVector<TPZAutoPointer<TPZCompMesh>,4> result(4);
+        result[0] = fFluxMesh;
+        result[1] = fPressureFineMesh;
+        result[2] = fcmeshFluxAverg;
+        result[3] = fcmeshPressureAverg;
+        return result;
+    }
+    
     TPZMHMixedMesh4SpacesControl(TPZAutoPointer<TPZGeoMesh> gmesh, TPZVec<int64_t> &coarseindices):TPZMHMixedMeshControl( gmesh, coarseindices){
         fcmeshPressureAverg = new TPZCompMesh(gmesh);
         fcmeshFluxAverg = new TPZCompMesh(gmesh);
@@ -91,7 +101,8 @@ public:
     void CreateAverageFlux();
     void CreateAveragePressure();
     void BuildMultiPhysicsMesh();
-//
+//    void HideTheElements();
+//    void GroupandCondenseElements();
 //    void HideTheElements();
 //    
 //    int64_t WhichSubdomain(TPZCompEl *cel);
