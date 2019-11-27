@@ -4,6 +4,8 @@
 #endif
 
 #include "ConfigurateCase.h"
+#include "pzcondensedcompel.h"
+#include "pzelementgroup.h"
 
 SimulationCase SimulationCase2DMHM();
 SimulationCase SimulationCase2D();
@@ -27,27 +29,100 @@ int main(){
     SimulationCase sim;
     bool IsCondensedQ = sim.IsCondensedQ;
 //    bool IsCondensedQ = 0;
-    
-    if (IsCondensedQ) {
+    if (1) {
         
         MHMIxed->ComputeNodElCon();
         int dim = MHMIxed->Dimension();
         int64_t nel = MHMIxed->NElements();
-        for (int64_t el =0; el<nel; el++) {
-            TPZCompEl *cel = MHMIxed->Element(el);
-            if(!cel) continue;
-            TPZGeoEl *gel = cel->Reference();
-            if(!gel) continue;
-            if(gel->Dimension() != dim) continue;
-            int nc = cel->NConnects();
-            cel->Connect(nc-1).IncrementElConnected();
+//        for (int64_t el =0; el<nel; el++) {
+//            TPZCompEl *cel = MHMIxed->Element(el);
+//            if(!cel) continue;
+//            TPZMultiphysicsElement *mul = dynamic_cast<TPZMultiphysicsElement *>(cel);
+//            TPZCondensedCompEl *cond = dynamic_cast<TPZCondensedCompEl *>((cel));
+//            TPZSubCompMesh *subcmesh = dynamic_cast<TPZSubCompMesh *>((cel));
+//            if (cond) {
+//                int ok=0;
+//            }
+//            TPZChunkVector<TPZCompEl *> celsubvec;
+//            if(subcmesh){
+//                subcmesh->LoadReferences();
+//                celsubvec = subcmesh->ElementVec();
+//            }
+//
+//            int nsubel = celsubvec.NElements();
+//            for (int ielsub =0 ; ielsub < nsubel; ielsub++) {
+//                TPZCompEl *celsub = celsubvec[ielsub];
+//                if(!celsub){
+//                    continue;
+//                }
+//                TPZCondensedCompEl *conden = dynamic_cast<TPZCondensedCompEl *>(celsub);
+//                TPZElementGroup *elgroup;
+//
+//                if(conden){
+//                    mul =dynamic_cast<TPZMultiphysicsElement *>(conden->ReferenceCompEl());
+//                    elgroup = dynamic_cast<TPZElementGroup *>(conden->ReferenceCompEl());
+//                }
+//                else{
+//                    continue;
+//                }
+//
+//                TPZStack<TPZCompEl *, 5> groupvec;
+//                if (elgroup) {
+//                    groupvec = elgroup->GetElGroup();
+//                }
+//                int nelgroup = groupvec.size();
+//                for (int ielgr=0; ielgr<nelgroup; ielgr++) {
+//                    TPZCompEl *celgr =groupvec[ielgr];
+//                    if(!celgr){
+//                        continue;
+//                    }
+//                    TPZMultiphysicsElement *mulsub = dynamic_cast<TPZMultiphysicsElement *>(celgr);
+//                    TPZCompEl *celpaver = mulsub->Element(3);
+//                    if (!celpaver) {
+//                        continue;
+//                    }
+//                    TPZGeoEl *gel = celgr->Reference();
+//                    if(!gel) continue;
+//                    if(gel->Dimension() != dim) continue;
+//                    int nc = mulsub->NConnects();
+//                    mulsub->Connect(nc-1).Print(*MHMIxed);
+////                    mulsub->Connect(nc-1).IncrementElConnected();
+////                    mulsub->Connect(nc-1).IncrementElConnected();
+//
+//                    int ok=0;
+//                }
+//            }
+//
+//
+//        }
+        MHMIxed->ComputeNodElCon();
+        int nconnects = MHMIxed->NConnects();
+        for (int icon=0; icon<nconnects; icon++) {
+            TPZConnect &connect = MHMIxed->ConnectVec()[icon];
+            int lagrange = connect.LagrangeMultiplier();
+            if (lagrange==3) {
+                MHMIxed->ConnectVec()[icon].IncrementElConnected();
+            }
+            else{
+//                MHMIxed->ConnectVec()[icon].ResetElConnected();
+            }
         }
+       
+        std::ofstream filefinal("mhmfinalantes.txt");
+        MHMIxed->Print(filefinal);
         
         // Created condensed elements for the elements that have internal nodes
         //                TPZCompMesh * cmeshaux = &MHMIxed.operator*();
-        TPZCompMeshTools::CreatedCondensedElements(MHMIxed, true, false);
+        TPZCompMeshTools::CreatedCondensedElements(MHMIxed, false, false);
+        
+       
+        std::cout<<MHMIxed->NEquations()<<std::endl;
     }
-    //    TPZMultiphysicsCompMesh * multcompmesh = dynamic_cast<TPZMultiphysicsCompMesh *>(MHMIxed);
+//        TPZMultiphysicsCompMesh * multcompmesh = dynamic_cast<TPZMultiphysicsCompMesh *>(MHMIxed);
+    
+
+    
+    
     {
         std::ofstream filefinal("MHM_After.txt");
         MHMIxed->Print(filefinal);

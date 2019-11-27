@@ -21,10 +21,10 @@ void TPZMHMixedMesh4SpacesControl::BuildComputationalMesh(bool usersubstructure)
         DebugStop();
     }
 #endif
-    
+    CreatePressureMHMMesh();
     CreateAverageFlux();
     CreateAveragePressure();
-    CreatePressureMHMMesh();
+    
    
     if(fNState > 1)
     {
@@ -32,11 +32,13 @@ void TPZMHMixedMesh4SpacesControl::BuildComputationalMesh(bool usersubstructure)
     }
     
     CreateHDivPressureMHMMesh();
+    
+    
     std::cout << "Total number of equations " << fCMesh->Solution().Rows() << std::endl;
     fGlobalSystemWithLocalCondensationSize = fCMesh->NEquations();
     fGlobalSystemSize = fCMesh->Solution().Rows();
     
-    fCMesh->ComputeNodElCon();
+//    fCMesh->ComputeNodElCon();
 #ifdef PZDEBUG2
     {
         std::ofstream out("Friendly.txt");
@@ -45,9 +47,13 @@ void TPZMHMixedMesh4SpacesControl::BuildComputationalMesh(bool usersubstructure)
     CheckMeshConsistency();
 #endif
     
+    
+    
     if (usersubstructure) {
         HideTheElements();
     }
+  
+    
     fNumeq = fCMesh->NEquations();
     
 #ifdef PZDEBUG2
@@ -113,7 +119,7 @@ void TPZMHMixedMesh4SpacesControl::CreateHDivPressureMHMMesh()
     TPZManVector<TPZCompMesh * ,4> meshvector;
     
 #ifdef PZDEBUG
-    if(0)
+    if(1)
     {
         std::ofstream out2("gmesh.txt");
         gmesh->Print(out2);
@@ -138,11 +144,11 @@ void TPZMHMixedMesh4SpacesControl::CreateHDivPressureMHMMesh()
     
    
     
-//    std::pair<int,int> skelmatid(fSkeletonMatId,fSecondSkeletonMatId);
-//    CreateMultiPhysicsInterfaceElements(fGMesh->Dimension()-1);
-//    CreateMultiPhysicsInterfaceElements(fGMesh->Dimension()-2);
+    std::pair<int,int> skelmatid(fSkeletonMatId,fSecondSkeletonMatId);
+    CreateMultiPhysicsInterfaceElements(fGMesh->Dimension()-1);
+    CreateMultiPhysicsInterfaceElements(fGMesh->Dimension()-2);
 #ifdef PZDEBUG
-    if(0)
+    if(1)
     {
         MixedFluxPressureCmesh->ComputeNodElCon();
         std::ofstream file("cmeshmphys.vtk");
@@ -355,7 +361,11 @@ void TPZMHMixedMesh4SpacesControl::CreateAveragePressure()
         if (domain == -1) {
             DebugStop();
         }
-#endif
+#endif//
+       
+        
+        
+        //
         
         SetSubdomain(cel, domain);
     }
@@ -364,6 +374,8 @@ void TPZMHMixedMesh4SpacesControl::CreateAveragePressure()
         std::ofstream out("PressureFineMesh2AVERAGE.txt");
         fcmeshPressureAverg->Print(out);
     }
+    
+  
     
     return;
 }
@@ -448,97 +460,223 @@ void TPZMHMixedMesh4SpacesControl::BuildMultiPhysicsMesh()
         LOGPZ_DEBUG(logger, sout.str())
     }
 #endif
+    
+
     mphysics->BuildMultiphysicsSpace(meshvec,gelindexes);
     
   
     
 }
 
-//void TPZMHMixedMesh4SpacesControl::HideTheElements()
-//{
-//    bool KeepOneLagrangian = false;
-//   
-//    typedef std::set<int64_t> TCompIndexes;
-//    std::map<int64_t, TCompIndexes> ElementGroups;
-//    TPZGeoMesh *gmesh = fCMesh->Reference();
-//    gmesh->ResetReference();
-//    int dim = gmesh->Dimension();
-//    fCMesh->LoadReferences();
-//    //
-//    
-//    
-//    
-//    //
-//    int64_t nel = fCMesh->NElements();
-//    for (int64_t el=0; el<nel; el++) {
-//        TPZCompEl *cel = fCMesh->Element(el);
-//        int64_t domain = WhichSubdomain(cel);
-//        if (domain == -1) {
-//            continue;
+void TPZMHMixedMesh4SpacesControl::HideTheElements()
+{
+    bool KeepOneLagrangian = false;
+   
+    typedef std::set<int64_t> TCompIndexes;
+    std::map<int64_t, TCompIndexes> ElementGroups;
+    TPZGeoMesh *gmesh = fCMesh->Reference();
+    gmesh->ResetReference();
+    int dim = gmesh->Dimension();
+    fCMesh->LoadReferences();
+    //
+    
+    
+    fCMesh->ComputeNodElCon();
+
+    //
+    int64_t nel = fCMesh->NElements();
+    for (int64_t el=0; el<nel; el++) {
+        TPZCompEl *cel = fCMesh->Element(el);
+        int64_t domain = WhichSubdomain(cel);
+        if (domain == -1) {
+            continue;
+        }
+        ElementGroups[domain].insert(el);
+    }
+    if (ElementGroups.size() <= 10)
+    {
+        std::cout << "Number of element groups " << ElementGroups.size() << std::endl;
+        std::map<int64_t,TCompIndexes>::iterator it;
+        for (it=ElementGroups.begin(); it != ElementGroups.end(); it++) {
+            std::cout << "Group " << it->first << " group size " << it->second.size() << std::endl;
+            std::cout << " elements ";
+            std::set<int64_t>::iterator its;
+            for (its = it->second.begin(); its != it->second.end(); its++) {
+                std::cout << *its << "|" << fCMesh->Element(*its)->Reference()->Index() << " ";
+            }
+            std::cout << std::endl;
+        }
+    }
+    
+    std::map<int64_t,int64_t> submeshindices;
+    
+  
+    
+    fCMesh.operator->()->ComputeNodElCon();
+
+    
+    PutinSubmeshes(fCMesh.operator->(), ElementGroups, submeshindices, KeepOneLagrangian);
+  
+   
+    
+    std::cout << "After putting in substructures\n";
+
+    
+    fMHMtoSubCMesh = submeshindices;
+
+ 
+   fCMesh->ComputeNodElCon();
+   
+    
+ 
+    GroupandCondenseElements();
+   fCMesh->CleanUpUnconnectedNodes();
+    
+    std::ofstream filetoprint("multcmesh.txt");
+    fCMesh->Print(filetoprint);
+    
+    std::cout << "Finished substructuring\n";
+}
+
+void TPZMHMixedMesh4SpacesControl::GroupandCondenseElements()
+{
+    
+  
+    
+//    if (1) {             //Asks if you want to condesate the problem
+//        fCMesh->ComputeNodElCon();
+//        int dim = fCMesh->Dimension();
+//        int64_t nel = fCMesh->NElements();
+//        for (int64_t el =0; el<nel; el++) {
+//            TPZCompEl *cel = fCMesh->Element(el);
+//            if(!cel) continue;
+//            TPZGeoEl *gel = cel->Reference();
+//            if(!gel) continue;
+//            if(gel->Dimension() != dim) continue;
+//            int nc = cel->NConnects();
+//            cel->Connect(nc-1).IncrementElConnected();
 //        }
-//        ElementGroups[domain].insert(el);
 //    }
-//    if (ElementGroups.size() <= 10)
-//    {
-//        std::cout << "Number of element groups " << ElementGroups.size() << std::endl;
-//        std::map<int64_t,TCompIndexes>::iterator it;
-//        for (it=ElementGroups.begin(); it != ElementGroups.end(); it++) {
-//            std::cout << "Group " << it->first << " group size " << it->second.size() << std::endl;
-//            std::cout << " elements ";
-//            std::set<int64_t>::iterator its;
-//            for (its = it->second.begin(); its != it->second.end(); its++) {
-//                std::cout << *its << "|" << fCMesh->Element(*its)->Reference()->Index() << " ";
+    
+    for (auto it:fMHMtoSubCMesh) {
+        TPZCompEl *cel = fCMesh->Element(it.second);
+        TPZSubCompMesh *subcmesh = dynamic_cast<TPZSubCompMesh *>(cel);
+        if (!subcmesh) {
+            DebugStop();
+        }
+        //
+//        if (1) {             //Asks if you want to condesate the problem
+//            subcmesh->ComputeNodElCon();
+//            int dim = subcmesh->Dimension();
+//            int64_t nel = subcmesh->NElements();
+//            for (int64_t el =0; el<nel; el++) {
+//                TPZCompEl *cel = subcmesh->Element(el);
+//                if(!cel) continue;
+//                TPZGeoEl *gel = cel->Reference();
+//                if(!gel) continue;
+//                if(gel->Dimension() != dim) continue;
+//                int nc = cel->NConnects();
+//                cel->Connect(nc-1).IncrementElConnected();
 //            }
-//            std::cout << std::endl;
 //        }
-//    }
-//    
-//    std::map<int64_t,int64_t> submeshindices;
-//    TPZCompMeshTools::PutinSubmeshes(fCMesh.operator->(), ElementGroups, submeshindices, KeepOneLagrangian);
-//    std::cout << "After putting in substructures\n";
-//    fMHMtoSubCMesh = submeshindices;
-//    fCMesh->ComputeNodElCon();
-//    fCMesh->CleanUpUnconnectedNodes();
-//    
-//    GroupandCondenseElements();
-//    
-//    std::cout << "Finished substructuring\n";
-//}
-//
-//void TPZMHMixedMesh4SpacesControl::GroupandCondenseElements()
-//{
-//    for (auto it:fMHMtoSubCMesh) {
-//        TPZCompEl *cel = fCMesh->Element(it.second);
-//        TPZSubCompMesh *subcmesh = dynamic_cast<TPZSubCompMesh *>(cel);
-//        if (!subcmesh) {
-//            DebugStop();
-//        }
-//        subcmesh->ComputeNodElCon();
-//        int dimen = fCMesh->Reference()->Dimension();
-//       
-//
-//        TPZCompMeshTools::GroupElements(subcmesh); //ok
-//        subcmesh->InitializeBlock();
-//#ifdef LOG4CXX
-//        if(logger->isDebugEnabled())
-//        {
-//            std::stringstream sout;
-//            subcmesh->Print(sout);
-//            LOGPZ_DEBUG(logger, sout.str())
-//        }
-//#endif
-//        bool keeplagrange = false;
-//        
-//       
-//        
-//        TPZCompMeshTools::CreatedCondensedElements(subcmesh, keeplagrange);
-//        subcmesh->CleanUpUnconnectedNodes();
-//        int numthreads = 0;
-//        int preconditioned = 0;
-//        TPZAutoPointer<TPZGuiInterface> guiInterface;
-//        
-//        subcmesh->SetAnalysisSkyline(numthreads, preconditioned, guiInterface);
-//    }
-//    fCMesh->ComputeNodElCon();
-//    fCMesh->CleanUpUnconnectedNodes();
-//}
+        //
+       // subcmesh->ComputeNodElCon();
+        int dimen = fCMesh->Reference()->Dimension();
+       
+     
+        TPZCompMeshTools::GroupElements(subcmesh); //ok
+        subcmesh->InitializeBlock();
+#ifdef LOG4CXX
+        if(logger->isDebugEnabled())
+        {
+            std::stringstream sout;
+            subcmesh->Print(sout);
+            LOGPZ_DEBUG(logger, sout.str())
+        }
+#endif
+        bool keeplagrange = false;
+        
+       
+        
+        TPZCompMeshTools::CreatedCondensedElements(subcmesh, keeplagrange);
+        subcmesh->CleanUpUnconnectedNodes();
+        int numthreads = 0;
+        int preconditioned = 0;
+        TPZAutoPointer<TPZGuiInterface> guiInterface;
+        
+        subcmesh->SetAnalysisSkyline(numthreads, preconditioned, guiInterface);
+    }
+  
+    fCMesh->ComputeNodElCon();
+    fCMesh->CleanUpUnconnectedNodes();
+}
+/// Put the element set into a subcompmesh and make the connects internal
+void TPZMHMixedMesh4SpacesControl::PutinSubmeshes(TPZCompMesh *cmesh, std::map<int64_t,std::set<int64_t> >&elindices, std::map<int64_t,int64_t> &indices, bool KeepOneLagrangian)
+
+{
+    //
+    int dimen = cmesh->Dimension();
+    int64_t nels = cmesh->NElements();
+    for (int64_t el =0; el<nels; el++) {
+        TPZCompEl *cel = cmesh->Element(el);
+        TPZMultiphysicsElement *mult = dynamic_cast<TPZMultiphysicsElement *>(cel);
+        TPZCompEl *celm = mult->Element(3);
+        if (!celm) {
+            continue;
+        }
+        if(!cel) continue;
+        TPZGeoEl *gel = cel->Reference();
+        if(!gel) continue;
+        if(gel->Dimension() != dimen) continue;
+        int nc = cel->NConnects();
+        if (nc!=8) {
+            DebugStop();
+        }
+        cel->Connect(nc-1).IncrementElConnected();
+}
+    fCMesh->ConnectVec()[2].IncrementElConnected();
+    fCMesh->ConnectVec()[11].IncrementElConnected();
+    //
+    for (std::map<int64_t,std::set<int64_t> >::iterator it = elindices.begin(); it != elindices.end(); it++) {
+        int64_t index;
+        TPZSubCompMesh *subcmesh = new TPZSubCompMesh(*cmesh,index);
+        indices[it->first] = index;
+        for (std::set<int64_t>::iterator itloc = it->second.begin(); itloc != it->second.end(); itloc++) {
+            subcmesh->TransferElement(cmesh, *itloc);
+        }
+    }
+   
+//  cmesh->ComputeNodElCon();
+   //
+    for (std::map<int64_t,int64_t>::iterator it = indices.begin(); it != indices.end(); it++) {
+        TPZSubCompMesh *subcmesh = dynamic_cast<TPZSubCompMesh *>(cmesh->Element(it->second));
+        if (!subcmesh) {
+            DebugStop();
+        }
+        int count = 0;
+        if (KeepOneLagrangian)
+        {
+            int64_t nconnects = subcmesh->NConnects();
+            for (int64_t ic=0; ic<nconnects; ic++) {
+                TPZConnect &c = subcmesh->Connect(ic);
+                if (c.LagrangeMultiplier() > 0) {
+                    c.IncrementElConnected();
+                    count++;
+                    if(count == 1 && c.NState() == 1)
+                    {
+                        break;
+                    }
+                    else if(count == 2 && c.NState() == 2)
+                    {
+                        break;
+                    }
+                    else if(count == 3 && c.NState() == 3)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        subcmesh->MakeAllInternal();
+    }
+}
